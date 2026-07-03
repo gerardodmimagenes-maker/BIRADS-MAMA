@@ -16,6 +16,104 @@ def valor_birads(cat):
     c = cat.replace("BI-RADS ", "").strip()
     return val.get(c, 1)
 
+def evaluar_nml(echogenicidad, distribucion, localizacion, asociados, correlacion_multimodal, es_tamizaje, visible_dos_planos=True):
+    """Algoritmo NML según Kim et al. Korean J Radiol 2025 (Fig. 19)."""
+    labels_asoc = {
+        "calcificaciones": "calcificaciones ecogénicas",
+        "ductos": "cambios ductales anormales",
+        "distorsion": "distorsión arquitectural",
+        "sombra": "sombra posterior",
+        "microquistes": "microquistes intercalados (<1 cm)",
+        "vascular": "hipervascularidad al Doppler",
+    }
+    asoc_activos = [labels_asoc[k] for k, v in asociados.items() if v and k in labels_asoc]
+    sospechosos = sum(1 for k in ("calcificaciones", "ductos", "distorsion", "sombra", "vascular") if asociados.get(k))
+    solo_quistes = asociados.get("microquistes") and sospechosos == 0
+
+    desc_h = (
+        f"Área de ecotextura alterada (**lesión no masa / NML**), patrón **{echogenicidad.lower()}**, "
+        f"distribución **{distribucion.lower()}** en **{localizacion}**"
+    )
+    if asoc_activos:
+        desc_h += f", con {', '.join(asoc_activos)}."
+    else:
+        desc_h += ", sin hallazgos asociados sospechosos."
+
+    if not visible_dos_planos:
+        return (
+            "BI-RADS 1",
+            "Probable variante de parénquima heterogéneo.",
+            "Hallazgo no definitivo como NML (visible en un solo plano).",
+            desc_h + " *(No cumple criterio de visibilidad en ≥2 planos ortogonales.)*",
+        )
+
+    if correlacion_multimodal:
+        if asociados.get("calcificaciones"):
+            cat = "BI-RADS 5"
+        elif sospechosos >= 2:
+            cat = "BI-RADS 4C"
+        else:
+            cat = "BI-RADS 4B"
+        return (
+            cat,
+            "Correlación con hallazgo clínico o sospechoso en otra modalidad.",
+            "Biopsia ecoguiada recomendada (contexto diagnóstico de alto riesgo).",
+            desc_h,
+        )
+
+    if distribucion in ("Lineal", "Segmentaria"):
+        if asociados.get("calcificaciones"):
+            cat = "BI-RADS 5"
+        elif sospechosos >= 2:
+            cat = "BI-RADS 4C"
+        else:
+            cat = "BI-RADS 4B"
+        return (
+            cat,
+            f"NML con distribución {distribucion.lower()} (patrón ductal).",
+            "Biopsia ecoguiada recomendada.",
+            desc_h,
+        )
+
+    if sospechosos > 0:
+        if asociados.get("calcificaciones"):
+            cat = "BI-RADS 5" if distribucion == "Regional" else "BI-RADS 4C"
+        elif asociados.get("sombra") and asociados.get("ductos"):
+            cat = "BI-RADS 4B"
+        elif asociados.get("vascular") or asociados.get("distorsion"):
+            cat = "BI-RADS 4A" if distribucion == "Focal" else "BI-RADS 4B"
+        else:
+            cat = "BI-RADS 4A"
+        return (
+            cat,
+            "NML con hallazgos asociados sospechosos.",
+            "Biopsia ecoguiada recomendada.",
+            desc_h,
+        )
+
+    if solo_quistes:
+        return (
+            "BI-RADS 2",
+            "Microquistes intercalados compatibles con cambios fibroquísticos (FCC).",
+            "Hallazgo benigno.",
+            desc_h,
+        )
+
+    if es_tamizaje:
+        return (
+            "BI-RADS 3",
+            "NML en tamizaje sin criterios de sospecha.",
+            "Control ecográfico a 6 meses. Biopsia si progresión o nuevos criterios sospechosos.",
+            desc_h,
+        )
+
+    return (
+        "BI-RADS 3",
+        "NML sin criterios de sospecha en contexto diagnóstico.",
+        "Correlación clínico-mamográfica y seguimiento según criterio.",
+        desc_h,
+    )
+
 # 🎨 Estilos estéticos
 st.markdown("""
     <style>
@@ -80,7 +178,7 @@ with st.sidebar:
 
 # 3. CUERPO PRINCIPAL
 st.markdown("<h1 style='font-size: 28px; font-weight: 800; margin-bottom:0;'>ESTACIÓN DE TRABAJO RADIOLÓGICA</h1>", unsafe_allow_html=True)
-st.markdown("<p style='font-size: 12px; color: #0284c7; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-top:2px;'>ACR BI-RADS Atlas v5.0 • IA Hyper-Especializada</p>", unsafe_allow_html=True)
+st.markdown("<p style='font-size: 12px; color: #0284c7; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-top:2px;'>ACR BI-RADS Atlas v5.0 • Módulo NML (Kim et al. 2025)</p>", unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 
 metodo = st.radio("Modalidad de Imagen Actual:", ["Ecografía (Ultrasonido)", "Mamografía"], horizontal=True)
@@ -176,7 +274,7 @@ with col_datos:
                     with st.expander(f"🔍 Hallazgo Focal {i+1}", expanded=True):
                         opciones = []
                         if metodo == "Mamografía": opciones.extend(["Nódulo (Masa)", "Calcificaciones", "Asimetría"])
-                        else: opciones.extend(["Nódulo Sólido", "Quiste Simple", "Complejo / Sólido-Líquido"])
+                        else: opciones.extend(["Nódulo Sólido", "Quiste Simple", "Complejo / Sólido-Líquido", "Lesión No Masa (NML)"])
                         if antecedente_ca != "Ninguno": opciones.append("Cicatriz / Distorsión Post-Tratamiento")
                         
                         hallazgo = st.selectbox(f"Tipo de Hallazgo {i+1}:", opciones, key=f"h_{clave}_{i}")
@@ -205,6 +303,67 @@ with col_datos:
                             if tipo_asi == "Global": cat_h, just_h, concl_h = "BI-RADS 2", "Asimetría benigna.", "Asimetría global del parénquima."
                             elif tipo_asi == "Focal": cat_h, just_h, concl_h = "BI-RADS 3", "Asimetría focal.", "Asimetría focal. Se sugiere control."
                             else: cat_h, just_h, concl_h = "BI-RADS 4A", "Neoaparición de tejido.", "Asimetría en desarrollo, requiere correlación."
+                        elif "Lesión No Masa" in hallazgo:
+                            st.caption("📚 Ref: Kim et al. Korean J Radiol 2025 — Lesiones No Masa (NML). Complemento al BI-RADS 5.")
+                            visible_2p = st.radio(
+                                "¿Visible en ≥2 planos ortogonales?",
+                                ["Sí (criterio NML)", "No (probable variante normal)"],
+                                horizontal=True,
+                                key=f"nml_2p_{clave}_{i}",
+                            )
+                            c_n1, c_n2, c_n3 = st.columns(3)
+                            with c_n1:
+                                eco_nml = st.selectbox(
+                                    "Ecogenicidad:",
+                                    ["Hipoecoica", "Isoecoica", "Hiperecoica", "Mixta"],
+                                    key=f"nml_eco_{clave}_{i}",
+                                )
+                            with c_n2:
+                                dist_nml = st.selectbox(
+                                    "Distribución:",
+                                    ["Focal", "Lineal", "Segmentaria", "Regional"],
+                                    key=f"nml_dist_{clave}_{i}",
+                                )
+                            with c_n3:
+                                loc_nml = st.selectbox(
+                                    "Localización:",
+                                    [f"Hora {x}" for x in range(1, 13)] + ["Retroareolar", "Central"],
+                                    key=f"nml_loc_{clave}_{i}",
+                                )
+                            st.markdown("**Hallazgos asociados (NML):**")
+                            ca1, ca2, ca3 = st.columns(3)
+                            with ca1:
+                                asoc_calc = st.checkbox("Calcificaciones ecogénicas", key=f"nml_ca_{clave}_{i}")
+                                asoc_duct = st.checkbox("Cambios ductales anormales", key=f"nml_cd_{clave}_{i}")
+                            with ca2:
+                                asoc_dist = st.checkbox("Distorsión arquitectural", key=f"nml_di_{clave}_{i}")
+                                asoc_somb = st.checkbox("Sombra posterior", key=f"nml_so_{clave}_{i}")
+                            with ca3:
+                                asoc_quist = st.checkbox("Microquistes intercalados (<1 cm)", key=f"nml_mq_{clave}_{i}")
+                                asoc_vasc = st.checkbox("Hipervascularidad (Doppler)", key=f"nml_va_{clave}_{i}")
+                            correlacion_nml = st.radio(
+                                "¿Correlaciona con hallazgo clínico o sospechoso en mamografía/RM?",
+                                ["No", "Sí"],
+                                horizontal=True,
+                                key=f"nml_corr_{clave}_{i}",
+                            )
+                            asociados_nml = {
+                                "calcificaciones": asoc_calc,
+                                "ductos": asoc_duct,
+                                "distorsion": asoc_dist,
+                                "sombra": asoc_somb,
+                                "microquistes": asoc_quist,
+                                "vascular": asoc_vasc,
+                            }
+                            cat_h, just_h, concl_h, desc_h = evaluar_nml(
+                                eco_nml,
+                                dist_nml,
+                                loc_nml,
+                                asociados_nml,
+                                correlacion_nml == "Sí",
+                                indicacion == "Tamizaje de rutina",
+                                visible_2p.startswith("Sí"),
+                            )
                         else:
                             c1, c2 = st.columns(2)
                             with c1: 
@@ -231,7 +390,10 @@ with col_datos:
                             if tiene_previos == "Sí":
                                 evolucion = st.selectbox("Evolución:", ["NUEVA (No visible previamente)", "Aumento de tamaño/cambio", "Estable < 24 meses", "Estable > 24 meses"], key=f"evo_{clave}_{i}")
                                 if "NUEVA" in evolucion or "Aumento" in evolucion:
-                                    if valor_birads(cat_h) < 4.1:
+                                    if "Lesión No Masa" in hallazgo and cat_h == "BI-RADS 3":
+                                        cat_h, just_h = "BI-RADS 4A", "NML con progresión o neoaparición."
+                                        concl_h = "NML con cambio evolutivo. Biopsia ecoguiada recomendada."
+                                    elif valor_birads(cat_h) < 4.1:
                                         cat_h, just_h = "BI-RADS 4A", "Neoaparición/Progresión."
                                         concl_h += " (Neoaparición/Crecimiento - Requiere biopsia)."
                                     desc_h += f" **(Hallazgo {evolucion.split('(')[0].lower()}).**"
@@ -320,7 +482,7 @@ marcador_color = colores_birads.get(global_cat, "#1e293b")
 # 5. COLUMNA DERECHA: RESPUESTA DE LA IA
 with col_reporte:
     with st.container(border=True):
-        st.markdown("<h3 style='margin-top:0; font-size: 18px; color: #0284c7;'>🤖 Copiloto IA (BI-RADS 5ta Ed.)</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='margin-top:0; font-size: 18px; color: #0284c7;'>🤖 Copiloto IA (BI-RADS 5 + NML)</h3>", unsafe_allow_html=True)
         st.markdown(f"""
             <div class="birads-white-text" style="background-color: {marcador_color}; border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 15px;">
                 <h2 style="font-size: 28px; font-weight: 900; margin: 0; font-family: system-ui; color: white !important;">{global_cat}</h2>
