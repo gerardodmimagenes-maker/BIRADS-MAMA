@@ -335,7 +335,7 @@ def generar_pdf_informe(informe_texto, nombre_paciente, medico="", categoria="")
         meta += f"  |  {categoria}"
     pdf.multi_cell(pdf.epw, 5, _pdf_texto(meta))
     pdf.ln(2)
-    pdf.set_draw_color(2, 132, 199)
+    pdf.set_draw_color(190, 24, 93)
     pdf.set_line_width(0.6)
     y_line = pdf.get_y()
     pdf.line(12, y_line, 198, y_line)
@@ -677,35 +677,122 @@ RECOMENDACIÓN
 
     return informe
 
-# 🎨 Estilos estéticos
+# 🎨 Estilos — identidad rosa / conciencia cáncer de mama
 st.markdown("""
     <style>
-    .stButton>button {
-        background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
-        color: white !important;
+    /* Paleta: Rose Quartz · Dusty Rose · legibilidad clínica */
+    .stApp {
+        background-color: #fdf2f8;
+    }
+    .block-container {
+        color: #0f172a;
+    }
+    section[data-testid="stSidebar"],
+    section[data-testid="stSidebar"] > div:first-child {
+        background-color: #fff1f2 !important;
+    }
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] p,
+    section[data-testid="stSidebar"] span,
+    section[data-testid="stSidebar"] h2,
+    section[data-testid="stSidebar"] h3 {
+        color: #0f172a !important;
+    }
+
+    .main-title-rose {
+        color: #be185d !important;
+        letter-spacing: 0.3px;
+    }
+    .accent-subtitle {
+        color: #be185d !important;
+    }
+
+    .stButton > button:not([kind="secondary"]),
+    .stDownloadButton > button {
+        background: linear-gradient(135deg, #be185d 0%, #9d174d 100%) !important;
+        color: #ffffff !important;
         border: none !important;
         padding: 10px 24px !important;
         font-weight: 600 !important;
         border-radius: 8px !important;
+        box-shadow: 0 2px 6px rgba(190, 24, 93, 0.22) !important;
+        transition: filter 0.2s ease, box-shadow 0.2s ease;
     }
+    .stButton > button:not([kind="secondary"]):hover,
+    .stDownloadButton > button:hover {
+        filter: brightness(1.06);
+        box-shadow: 0 4px 12px rgba(190, 24, 93, 0.28) !important;
+    }
+
+    div[data-testid="stSidebar"] .stButton > button[kind="secondary"] {
+        background: #fdf2f8 !important;
+        color: #9d174d !important;
+        border: 2px solid #f9a8d4 !important;
+        padding: 10px 24px !important;
+        font-weight: 600 !important;
+        border-radius: 8px !important;
+        box-shadow: none !important;
+    }
+    div[data-testid="stSidebar"] .stButton > button[kind="secondary"]:hover {
+        background: #fce7f3 !important;
+        border-color: #be185d !important;
+        color: #831843 !important;
+    }
+
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        border: 1px solid #fecdd3 !important;
+        border-radius: 10px !important;
+        background-color: #ffffff !important;
+        box-shadow: 0 1px 4px rgba(190, 24, 93, 0.07) !important;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"]:hover,
+    div[data-testid="stVerticalBlockBorderWrapper"]:focus-within {
+        border-color: #be185d !important;
+        box-shadow: 0 2px 10px rgba(190, 24, 93, 0.12) !important;
+    }
+
+    button[data-baseweb="tab"][aria-selected="true"] {
+        color: #be185d !important;
+        border-bottom: 3px solid #be185d !important;
+        background-color: #fff1f2 !important;
+    }
+    button[data-baseweb="tab"]:hover {
+        color: #9d174d !important;
+    }
+
     .birads-white-text, .birads-white-text * {
         color: #ffffff !important;
     }
-    input, .stTextInput input, .stNumberInput input {
-        color: #0f172a !important; 
-        -webkit-text-fill-color: #0f172a !important; 
+    input, .stTextInput input, .stNumberInput input, textarea {
+        color: #0f172a !important;
+        -webkit-text-fill-color: #0f172a !important;
         font-weight: 600 !important;
     }
     div[data-baseweb="select"] * {
         color: #0f172a !important;
     }
-    .copilot-box {
-        background-color: #f8fafc;
-        border-left: 4px solid #0284c7;
-        padding: 15px;
-        border-radius: 4px;
-        margin-bottom: 15px;
+    div[data-baseweb="select"]:focus-within {
+        border-color: #be185d !important;
+        box-shadow: 0 0 0 1px #be185d !important;
     }
+
+    .copilot-box {
+        background-color: #fff1f2;
+        border-left: 4px solid #be185d;
+        padding: 15px;
+        border-radius: 6px;
+        margin-bottom: 15px;
+        color: #0f172a;
+    }
+    .copilot-box p {
+        color: #0f172a !important;
+    }
+
+    hr {
+        border-color: #fecdd3 !important;
+    }
+
     .alerta-critica {
         background-color: #140000;
         border: 2px solid #ff073a;
@@ -730,8 +817,8 @@ st.markdown("""
 # 2. PANEL LATERAL: Control Avanzado del Paciente
 with st.sidebar:
     st.markdown("<h2 style='text-align: center; color: #0f172a; font-family: sans-serif; font-weight: 900; letter-spacing: 1px; margin-bottom:0;'>🩺 BI-RADS ENGINE</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #0284c7; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-top: 3px;'>Copiloto Multilesional</p>", unsafe_allow_html=True)
-    st.markdown("<hr style='border-color: #cbd5e1; margin: 15px 0;'>", unsafe_allow_html=True)
+    st.markdown("<p class='accent-subtitle' style='text-align: center; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-top: 3px;'>Copiloto Multilesional</p>", unsafe_allow_html=True)
+    st.markdown("<hr style='border-color: #fecdd3; margin: 15px 0;'>", unsafe_allow_html=True)
 
     st.markdown("<h3 style='color: #0f172a; font-size: 16px;'>👤 Perfil / Plantillas</h3>", unsafe_allow_html=True)
     st.text_input("Médico responsable:", key="perfil_medico", placeholder="Dr. / Dra. ...")
@@ -766,8 +853,8 @@ with st.sidebar:
             for nombre in st.session_state.plantillas_usuario:
                 st.caption(f"• {nombre}")
 
-    st.markdown("<hr style='border-color: #cbd5e1; margin: 12px 0;'>", unsafe_allow_html=True)
-    
+    st.markdown("<hr style='border-color: #fecdd3; margin: 12px 0;'>", unsafe_allow_html=True)
+
     st.markdown("<h3 style='color: #0f172a; font-size: 18px;'>📝 Datos de Filiación</h3>", unsafe_allow_html=True)
     nombre_paciente = st.text_input("Paciente / ID:", key="nombre_paciente")
     edad_paciente = st.number_input("Edad:", min_value=15, max_value=110, key="edad_paciente")
@@ -798,14 +885,14 @@ with st.sidebar:
 
     indicacion = st.selectbox("Indicación Clínica:", ["Tamizaje de rutina", "Seguimiento Oncológico", "Nódulo palpable / Mastalgia", "Evaluación de dispositivos", "Secreción por el pezón", "Ginecomastia en estudio"], key="indicacion")
 
-    st.markdown("<hr style='border-color: #cbd5e1; margin: 12px 0;'>", unsafe_allow_html=True)
-    if st.button("🔄 Reiniciar Paciente", use_container_width=True):
+    st.markdown("<hr style='border-color: #fecdd3; margin: 12px 0;'>", unsafe_allow_html=True)
+    if st.button("🔄 Reiniciar Paciente", use_container_width=True, type="secondary"):
         reiniciar_paciente()
         st.rerun()
 
 # 3. CUERPO PRINCIPAL
-st.markdown("<h1 style='font-size: 28px; font-weight: 800; margin-bottom:0;'>ESTACIÓN DE TRABAJO RADIOLÓGICA</h1>", unsafe_allow_html=True)
-st.markdown("<p style='font-size: 12px; color: #0284c7; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-top:2px;'>ACR BI-RADS Atlas v5.0 • Módulo NML (Kim et al. 2025)</p>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-title-rose' style='font-size: 28px; font-weight: 800; margin-bottom:0;'>ESTACIÓN DE TRABAJO RADIOLÓGICA</h1>", unsafe_allow_html=True)
+st.markdown("<p class='accent-subtitle' style='font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-top:2px;'>ACR BI-RADS Atlas v5.0 • Módulo NML (Kim et al. 2025)</p>", unsafe_allow_html=True)
 if st.session_state._plantilla_aplicada != "— Personalizado —":
     st.caption(f"📋 Plantilla activa: **{st.session_state._plantilla_aplicada}**")
 st.markdown("<br>", unsafe_allow_html=True)
@@ -1135,7 +1222,7 @@ if alerta_critica:
 # 5. COLUMNA DERECHA: RESPUESTA DE LA IA
 with col_reporte:
     with st.container(border=True):
-        st.markdown("<h3 style='margin-top:0; font-size: 18px; color: #0284c7;'>🤖 Copiloto IA (BI-RADS 5 + NML)</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 class='accent-subtitle' style='margin-top:0; font-size: 18px;'>🤖 Copiloto IA (BI-RADS 5 + NML)</h3>", unsafe_allow_html=True)
         st.markdown(f"""
             <div class="birads-white-text" style="background-color: {marcador_color}; border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 15px;">
                 <h2 style="font-size: 28px; font-weight: 900; margin: 0; font-family: system-ui; color: white !important;">{global_cat}</h2>
