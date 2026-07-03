@@ -1,5 +1,8 @@
 import streamlit as st
+from pathlib import Path
+from datetime import datetime
 from PIL import Image, ImageDraw
+from fpdf import FPDF
 import time
 
 # 1. Configuración de la Suite Médica Premium
@@ -10,11 +13,201 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+HOSPITAL_NOMBRE = "Hospital Docencia / Investigación"
+LOGO_CANDIDATOS = [
+    Path(".streamlit/logo.png"),
+    Path("assets/logo.png"),
+    Path("logo.png"),
+]
+
+PLANTILLA_KEYS = [
+    "nombre_paciente", "edad_paciente", "sexo_paciente", "antecedente_ca", "recibio_rt",
+    "tiene_protesis", "tiene_portacath", "estado_portacath", "tiene_marcapasos",
+    "estado_marcapasos", "indicacion", "metodo", "comp_mammo", "comp_eco",
+    "hay_md", "hay_mi", "num_md", "num_mi", "ax_md", "ax_mi", "ed_md", "ed_mi",
+]
+
+DEFAULTS = {
+    "nombre_paciente": "Paciente_Anónima",
+    "edad_paciente": 42,
+    "sexo_paciente": "Femenino",
+    "antecedente_ca": "Ninguno",
+    "recibio_rt": False,
+    "tiene_protesis": "No",
+    "tiene_portacath": False,
+    "estado_portacath": "Aspecto conservado (Sin complicaciones)",
+    "tiene_marcapasos": False,
+    "estado_marcapasos": "Aspecto conservado (Sin complicaciones)",
+    "indicacion": "Tamizaje de rutina",
+    "metodo": "Mamografía",
+    "comp_mammo": "B - Fibroglandular dispersa",
+    "comp_eco": "Homogénea adiposa",
+    "hay_md": "No",
+    "hay_mi": "No",
+    "num_md": 1,
+    "num_mi": 1,
+    "ax_md": "Conservados",
+    "ax_mi": "Conservados",
+    "ed_md": False,
+    "ed_mi": False,
+    "perfil_medico": "",
+    "plantilla_selector": "— Personalizado —",
+    "_plantilla_aplicada": "— Personalizado —",
+}
+
+PLANTILLAS_SISTEMA = {
+    "Tamizaje normal": {
+        "indicacion": "Tamizaje de rutina",
+        "antecedente_ca": "Ninguno",
+        "recibio_rt": False,
+        "sexo_paciente": "Femenino",
+        "tiene_protesis": "No",
+        "tiene_portacath": False,
+        "tiene_marcapasos": False,
+        "metodo": "Mamografía",
+        "comp_mammo": "B - Fibroglandular dispersa",
+        "hay_md": "No",
+        "hay_mi": "No",
+        "ax_md": "Conservados",
+        "ax_mi": "Conservados",
+        "ed_md": False,
+        "ed_mi": False,
+    },
+    "Seguimiento post-Qx": {
+        "indicacion": "Seguimiento Oncológico",
+        "antecedente_ca": "Sí (Cirugía Conservadora)",
+        "recibio_rt": True,
+        "sexo_paciente": "Femenino",
+        "tiene_protesis": "No",
+        "tiene_portacath": False,
+        "tiene_marcapasos": False,
+        "metodo": "Ecografía (Ultrasonido)",
+        "comp_eco": "Heterogénea",
+        "hay_md": "No",
+        "hay_mi": "No",
+        "ax_md": "Conservados",
+        "ax_mi": "Conservados",
+        "ed_md": False,
+        "ed_mi": False,
+    },
+    "Nódulo palpable (Eco)": {
+        "indicacion": "Nódulo palpable / Mastalgia",
+        "antecedente_ca": "Ninguno",
+        "recibio_rt": False,
+        "sexo_paciente": "Femenino",
+        "metodo": "Ecografía (Ultrasonido)",
+        "comp_eco": "Homogénea fibroglandular",
+        "hay_md": "Sí",
+        "hay_mi": "No",
+        "num_md": 1,
+        "ax_md": "Conservados",
+        "ax_mi": "Conservados",
+        "ed_md": False,
+        "ed_mi": False,
+    },
+}
+
+def init_session_state():
+    if "plantillas_usuario" not in st.session_state:
+        st.session_state.plantillas_usuario = {}
+    for key, value in DEFAULTS.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+def extraer_config_plantilla():
+    return {k: st.session_state.get(k, DEFAULTS.get(k)) for k in PLANTILLA_KEYS}
+
+def aplicar_plantilla(config):
+    for key, value in config.items():
+        if key in PLANTILLA_KEYS:
+            st.session_state[key] = value
+
+def todas_las_plantillas():
+    return ["— Personalizado —", *PLANTILLAS_SISTEMA.keys(), *st.session_state.get("plantillas_usuario", {}).keys()]
+
+def resolver_logo():
+    for path in LOGO_CANDIDATOS:
+        if path.exists():
+            return path
+    return None
+
+def _pdf_texto(texto):
+    return texto.encode("latin-1", "replace").decode("latin-1")
+
+def generar_pdf_informe(informe_texto, nombre_paciente, medico="", categoria=""):
+    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    pdf.set_margins(12, 12, 12)
+    pdf.set_auto_page_break(auto=True, margin=18)
+    pdf.add_page()
+
+    logo = resolver_logo()
+    if logo:
+        pdf.image(str(logo), x=12, y=12, w=35)
+        pdf.set_xy(52, 14)
+        pdf.set_font("Helvetica", "B", 15)
+        pdf.cell(pdf.epw - 40, 8, _pdf_texto(HOSPITAL_NOMBRE), ln=True)
+        pdf.set_x(52)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(80, 80, 80)
+        pdf.cell(pdf.epw - 40, 5, _pdf_texto("Servicio de Diagnóstico por Imágenes — Unidad de Mastología"), ln=True)
+        pdf.set_y(44)
+    else:
+        pdf.set_font("Helvetica", "B", 15)
+        pdf.cell(0, 8, _pdf_texto(HOSPITAL_NOMBRE), ln=True, align="C")
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(80, 80, 80)
+        pdf.cell(0, 5, _pdf_texto("Servicio de Diagnóstico por Imágenes — Unidad de Mastología"), ln=True, align="C")
+        pdf.ln(4)
+
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Helvetica", "", 9)
+    meta = f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+    if medico:
+        meta += f"  |  Médico: {medico}"
+    if categoria:
+        meta += f"  |  {categoria}"
+    pdf.multi_cell(pdf.epw, 5, _pdf_texto(meta))
+    pdf.ln(2)
+    pdf.set_draw_color(2, 132, 199)
+    pdf.set_line_width(0.6)
+    y_line = pdf.get_y()
+    pdf.line(12, y_line, 198, y_line)
+    pdf.ln(6)
+
+    for linea in informe_texto.split("\n"):
+        linea = linea.strip()
+        pdf.set_x(pdf.l_margin)
+        if not linea:
+            pdf.ln(3)
+            continue
+        es_titulo = linea.isupper() or linea.startswith("INFORME DE")
+        if es_titulo and len(linea) < 80:
+            pdf.ln(2)
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.multi_cell(pdf.epw, 6, _pdf_texto(linea))
+        else:
+            pdf.set_font("Helvetica", "", 10)
+            pdf.multi_cell(pdf.epw, 5.5, _pdf_texto(linea))
+
+    pdf.ln(8)
+    pdf.set_x(pdf.l_margin)
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(100, 100, 100)
+    pdf.multi_cell(
+        pdf.epw, 4,
+        _pdf_texto("Documento generado por BI-RADS Intelligence Engine. Uso clínico bajo responsabilidad del médico tratante."),
+    )
+    return bytes(pdf.output())
+
+init_session_state()
 # --- FUNCIÓN DE UTILIDAD BI-RADS ---
 def valor_birads(cat):
     val = {"1":1, "2":2, "3":3, "4A":4.1, "4B":4.2, "4C":4.3, "5":5, "6":6}
     c = cat.replace("BI-RADS ", "").strip()
     return val.get(c, 1)
+
+def es_categoria_critica(cat):
+    return cat in ("BI-RADS 4C", "BI-RADS 5")
 
 def evaluar_nml(echogenicidad, distribucion, localizacion, asociados, correlacion_multimodal, es_tamizaje, visible_dos_planos=True):
     """Algoritmo NML según Kim et al. Korean J Radiol 2025 (Fig. 19)."""
@@ -319,6 +512,24 @@ st.markdown("""
         border-radius: 4px;
         margin-bottom: 15px;
     }
+    .alerta-critica {
+        background-color: #140000;
+        border: 2px solid #ff073a;
+        box-shadow: 0 0 10px #ff073a, 0 0 22px rgba(255, 7, 58, 0.55);
+        color: #ff073a;
+        padding: 14px 18px;
+        border-radius: 8px;
+        font-weight: 800;
+        font-size: 15px;
+        text-align: center;
+        margin-bottom: 15px;
+        letter-spacing: 0.4px;
+        animation: pulse-neon 1.4s ease-in-out infinite alternate;
+    }
+    @keyframes pulse-neon {
+        from { box-shadow: 0 0 8px #ff073a, 0 0 14px rgba(255, 7, 58, 0.35); }
+        to { box-shadow: 0 0 16px #ff073a, 0 0 32px rgba(255, 7, 58, 0.75); }
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -327,37 +538,80 @@ with st.sidebar:
     st.markdown("<h2 style='text-align: center; color: #0f172a; font-family: sans-serif; font-weight: 900; letter-spacing: 1px; margin-bottom:0;'>🩺 BI-RADS ENGINE</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #0284c7; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-top: 3px;'>Copiloto Multilesional</p>", unsafe_allow_html=True)
     st.markdown("<hr style='border-color: #cbd5e1; margin: 15px 0;'>", unsafe_allow_html=True)
+
+    st.markdown("<h3 style='color: #0f172a; font-size: 16px;'>👤 Perfil / Plantillas</h3>", unsafe_allow_html=True)
+    st.text_input("Médico responsable:", key="perfil_medico", placeholder="Dr. / Dra. ...")
+
+    opciones_plantilla = todas_las_plantillas()
+    if st.session_state.plantilla_selector not in opciones_plantilla:
+        st.session_state.plantilla_selector = "— Personalizado —"
+
+    plantilla_elegida = st.selectbox("Plantilla de estudio:", opciones_plantilla, key="plantilla_selector")
+    if st.button("📋 Aplicar plantilla", use_container_width=True):
+        if plantilla_elegida == "— Personalizado —":
+            st.info("Seleccione una plantilla distinta de 'Personalizado'.")
+        elif plantilla_elegida in PLANTILLAS_SISTEMA:
+            aplicar_plantilla(PLANTILLAS_SISTEMA[plantilla_elegida])
+            st.session_state._plantilla_aplicada = plantilla_elegida
+            st.rerun()
+        elif plantilla_elegida in st.session_state.plantillas_usuario:
+            aplicar_plantilla(st.session_state.plantillas_usuario[plantilla_elegida])
+            st.session_state._plantilla_aplicada = plantilla_elegida
+            st.rerun()
+
+    nombre_nueva_pl = st.text_input("Guardar config. actual como:", key="nombre_nueva_plantilla", placeholder="Ej: Mi protocolo FCC")
+    if st.button("💾 Guardar plantilla personal", use_container_width=True):
+        if nombre_nueva_pl.strip():
+            st.session_state.plantillas_usuario[nombre_nueva_pl.strip()] = extraer_config_plantilla()
+            st.success(f"Plantilla '{nombre_nueva_pl.strip()}' guardada.")
+        else:
+            st.warning("Ingrese un nombre para la plantilla.")
+
+    if st.session_state.plantillas_usuario:
+        with st.expander("Mis plantillas guardadas"):
+            for nombre in st.session_state.plantillas_usuario:
+                st.caption(f"• {nombre}")
+
+    st.markdown("<hr style='border-color: #cbd5e1; margin: 12px 0;'>", unsafe_allow_html=True)
     
     st.markdown("<h3 style='color: #0f172a; font-size: 18px;'>📝 Datos de Filiación</h3>", unsafe_allow_html=True)
-    nombre_paciente = st.text_input("Paciente / ID:", value="Paciente_Anónima")
-    edad_paciente = st.number_input("Edad:", min_value=15, max_value=110, value=42)
-    sexo_paciente = st.radio("Sexo Biológico:", ["Femenino", "Masculino"], horizontal=True)
+    nombre_paciente = st.text_input("Paciente / ID:", key="nombre_paciente")
+    edad_paciente = st.number_input("Edad:", min_value=15, max_value=110, key="edad_paciente")
+    sexo_paciente = st.radio("Sexo Biológico:", ["Femenino", "Masculino"], horizontal=True, key="sexo_paciente")
 
     st.markdown("<h3 style='color: #0f172a; font-size: 15px; margin-top:10px;'>🎗️ Antecedentes Oncológicos</h3>", unsafe_allow_html=True)
-    antecedente_ca = st.radio("Historia de Cáncer de Mama:", ["Ninguno", "Sí (Cirugía Conservadora)", "Sí (Mastectomía Radical)"])
-    recibio_rt = st.checkbox("Recibió Radioterapia") if antecedente_ca != "Ninguno" else False
+    antecedente_ca = st.radio("Historia de Cáncer de Mama:", ["Ninguno", "Sí (Cirugía Conservadora)", "Sí (Mastectomía Radical)"], key="antecedente_ca")
+    if antecedente_ca != "Ninguno":
+        recibio_rt = st.checkbox("Recibió Radioterapia", key="recibio_rt")
+    else:
+        st.session_state.recibio_rt = False
+        recibio_rt = False
 
     st.markdown("<h3 style='color: #0f172a; font-size: 15px; margin-top:10px;'>⚙️ Dispositivos e Implantes</h3>", unsafe_allow_html=True)
     tiene_protesis = "No"
     if sexo_paciente == "Femenino" or antecedente_ca == "Sí (Mastectomía Radical)":
-        tiene_protesis = st.selectbox("Implantes Mamarios:", ["No", "Sí (Bilateral)", "Sí (Solo Derecha)", "Sí (Solo Izquierda)"])
+        tiene_protesis = st.selectbox("Implantes Mamarios:", ["No", "Sí (Bilateral)", "Sí (Solo Derecha)", "Sí (Solo Izquierda)"], key="tiene_protesis")
     
-    tiene_portacath = st.checkbox("Port-a-Cath (Reservorio Venoso)")
+    tiene_portacath = st.checkbox("Port-a-Cath (Reservorio Venoso)", key="tiene_portacath")
     estado_portacath = "No aplica"
-    if tiene_portacath: estado_portacath = st.selectbox("Estado del Bolsillo (Port-a-Cath):", ["Aspecto conservado (Sin complicaciones)", "Colección pericatéter (Seroma/Hematoma)", "Signos inflamatorios locales", "Sospecha de Trombosis asociada"])
+    if tiene_portacath:
+        estado_portacath = st.selectbox("Estado del Bolsillo (Port-a-Cath):", ["Aspecto conservado (Sin complicaciones)", "Colección pericatéter (Seroma/Hematoma)", "Signos inflamatorios locales", "Sospecha de Trombosis asociada"], key="estado_portacath")
 
-    tiene_marcapasos = st.checkbox("Marcapasos / CDI")
+    tiene_marcapasos = st.checkbox("Marcapasos / CDI", key="tiene_marcapasos")
     estado_marcapasos = "No aplica"
-    if tiene_marcapasos: estado_marcapasos = st.selectbox("Estado del Bolsillo (Marcapasos):", ["Aspecto conservado (Sin complicaciones)", "Colección peridispositivo (Seroma/Hematoma)", "Signos inflamatorios locales"])
+    if tiene_marcapasos:
+        estado_marcapasos = st.selectbox("Estado del Bolsillo (Marcapasos):", ["Aspecto conservado (Sin complicaciones)", "Colección peridispositivo (Seroma/Hematoma)", "Signos inflamatorios locales"], key="estado_marcapasos")
 
-    indicacion = st.selectbox("Indicación Clínica:", ["Tamizaje de rutina", "Seguimiento Oncológico", "Nódulo palpable / Mastalgia", "Evaluación de dispositivos", "Secreción por el pezón", "Ginecomastia en estudio"])
+    indicacion = st.selectbox("Indicación Clínica:", ["Tamizaje de rutina", "Seguimiento Oncológico", "Nódulo palpable / Mastalgia", "Evaluación de dispositivos", "Secreción por el pezón", "Ginecomastia en estudio"], key="indicacion")
 
 # 3. CUERPO PRINCIPAL
 st.markdown("<h1 style='font-size: 28px; font-weight: 800; margin-bottom:0;'>ESTACIÓN DE TRABAJO RADIOLÓGICA</h1>", unsafe_allow_html=True)
 st.markdown("<p style='font-size: 12px; color: #0284c7; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-top:2px;'>ACR BI-RADS Atlas v5.0 • Módulo NML (Kim et al. 2025)</p>", unsafe_allow_html=True)
+if st.session_state._plantilla_aplicada != "— Personalizado —":
+    st.caption(f"📋 Plantilla activa: **{st.session_state._plantilla_aplicada}**")
 st.markdown("<br>", unsafe_allow_html=True)
 
-metodo = st.radio("Modalidad de Imagen Actual:", ["Ecografía (Ultrasonido)", "Mamografía"], horizontal=True)
+metodo = st.radio("Modalidad de Imagen Actual:", ["Ecografía (Ultrasonido)", "Mamografía"], horizontal=True, key="metodo")
 tecnica_texto = "Ultrasonido mamario de alta resolución con transductor lineal y evaluación Doppler Color." if "Ecografía" in metodo else "Mamografía digital bilateral en proyecciones estándar."
 if tiene_protesis != "No" and metodo == "Mamografía": tecnica_texto += " Incluye maniobras de Eklund."
 
@@ -390,10 +644,10 @@ with col_datos:
         st.markdown("<h3 style='margin-top:0; font-size: 18px;'>🧬 Evaluación y Caracterización</h3>", unsafe_allow_html=True)
         
         if metodo == "Mamografía":
-            comp_global = st.selectbox("Densidad Mamaria (ACR):", ["A - Adiposa", "B - Fibroglandular dispersa", "C - Heterogéneamente densa", "D - Extremadamente densa"]) if sexo_paciente == "Femenino" else "Tejido mamario masculino"
+            comp_global = st.selectbox("Densidad Mamaria (ACR):", ["A - Adiposa", "B - Fibroglandular dispersa", "C - Heterogéneamente densa", "D - Extremadamente densa"], key="comp_mammo") if sexo_paciente == "Femenino" else "Tejido mamario masculino"
             composicion_texto = f"Composición mamaria tipo {comp_global.split(' - ')[0]}." if sexo_paciente == "Femenino" else "Tejido mamario masculino."
         else:
-            comp_global = st.selectbox("Ecoestructura de Fondo:", ["Homogénea adiposa", "Homogénea fibroglandular", "Heterogénea"])
+            comp_global = st.selectbox("Ecoestructura de Fondo:", ["Homogénea adiposa", "Homogénea fibroglandular", "Heterogénea"], key="comp_eco")
             composicion_texto = f"Ecoestructura de fondo tipo {comp_global.lower()}."
             
         st.markdown("<br>", unsafe_allow_html=True)
@@ -444,7 +698,7 @@ with col_datos:
             if hay_hallazgos == "No":
                 desc_global = "- **Parénquima:** Sin alteraciones estructurales dominantes.\n"
             else:
-                num_hallazgos = st.number_input("Cantidad de hallazgos a describir:", min_value=1, max_value=5, value=1, key=f"num_{clave}")
+                num_hallazgos = st.number_input("Cantidad de hallazgos a describir:", min_value=1, max_value=5, key=f"num_{clave}")
                 
                 for i in range(num_hallazgos):
                     with st.expander(f"🔍 Hallazgo Focal {i+1}", expanded=True):
@@ -654,6 +908,13 @@ else:
 
 colores_birads = {"BI-RADS 1": "#059669", "BI-RADS 2": "#059669", "BI-RADS 3": "#d97706", "BI-RADS 4A": "#ea580c", "BI-RADS 4B": "#ea580c", "BI-RADS 4C": "#dc2626", "BI-RADS 5": "#991b1b"}
 marcador_color = colores_birads.get(global_cat, "#1e293b")
+alerta_critica = es_categoria_critica(global_cat) or es_categoria_critica(cat_md) or es_categoria_critica(cat_mi)
+
+if alerta_critica:
+    st.markdown(
+        '<div class="alerta-critica">🚨 CRÍTICO: Coordinar biopsia urgente con Docencia/Investigación</div>',
+        unsafe_allow_html=True,
+    )
 
 # 5. COLUMNA DERECHA: RESPUESTA DE LA IA
 with col_reporte:
@@ -664,6 +925,11 @@ with col_reporte:
                 <h2 style="font-size: 28px; font-weight: 900; margin: 0; font-family: system-ui; color: white !important;">{global_cat}</h2>
             </div>
         """, unsafe_allow_html=True)
+        if alerta_critica:
+            st.markdown(
+                '<div class="alerta-critica">🚨 CRÍTICO: Coordinar biopsia urgente con Docencia/Investigación</div>',
+                unsafe_allow_html=True,
+            )
 
         tab_res_md, tab_res_mi = st.tabs(["Análisis MD", "Análisis MI"])
         for tab, mama in zip([tab_res_md, tab_res_mi], ["Mama Derecha", "Mama Izquierda"]):
@@ -684,4 +950,21 @@ with col_reporte:
             tecnica_texto, composicion_texto, texto_dispositivos,
             resultados, global_cat, global_rec,
         )
-        st.text_area("", value=informe_pacs, height=420, label_visibility="collapsed")
+        st.text_area("", value=informe_pacs, height=420, label_visibility="collapsed", key="informe_pacs_texto")
+
+        pdf_bytes = generar_pdf_informe(
+            informe_pacs,
+            nombre_paciente,
+            medico=st.session_state.get("perfil_medico", ""),
+            categoria=global_cat,
+        )
+        nombre_archivo = f"Informe_BIRADS_{nombre_paciente.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
+        st.download_button(
+            label="⬇ Descargar Informe PDF",
+            data=pdf_bytes,
+            file_name=nombre_archivo,
+            mime="application/pdf",
+            use_container_width=True,
+        )
+        if not resolver_logo():
+            st.caption("💡 Para incluir logo institucional, coloque `logo.png` en la carpeta `.streamlit/` o `assets/`.")
