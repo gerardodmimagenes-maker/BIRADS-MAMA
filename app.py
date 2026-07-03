@@ -110,9 +110,113 @@ PLANTILLAS_SISTEMA = {
 def init_session_state():
     if "plantillas_usuario" not in st.session_state:
         st.session_state.plantillas_usuario = {}
+    if "_metodo_previo" not in st.session_state:
+        st.session_state._metodo_previo = DEFAULTS["metodo"]
     for key, value in DEFAULTS.items():
         if key not in st.session_state:
             st.session_state[key] = value
+
+def _claves_hallazgos_dinamicos():
+    """Prefijos de claves de widgets por mama/hallazgo/modalidad."""
+    return (
+        "h_", "morf_", "dist_", "asi_", "nml_", "dop_", "loc_", "m_",
+        "f_", "ma_", "prev_", "evo_", "plano_", "est_imp_", "ed_", "cal_", "cont_",
+        "up_", "btn_", "roi_",
+    )
+
+def limpiar_estado_hallazgos():
+    """Elimina widgets de hallazgos y CAD al cambiar modalidad."""
+    prefijos = _claves_hallazgos_dinamicos()
+    for key in list(st.session_state.keys()):
+        if any(key.startswith(p) for p in prefijos):
+            del st.session_state[key]
+    for clave in ("md", "mi"):
+        st.session_state[f"hay_{clave}"] = DEFAULTS[f"hay_{clave}"]
+        st.session_state[f"num_{clave}"] = DEFAULTS[f"num_{clave}"]
+        st.session_state[f"ax_{clave}"] = DEFAULTS[f"ax_{clave}"]
+        st.session_state[f"ed_{clave}"] = DEFAULTS[f"ed_{clave}"]
+    st.session_state.pop("informe_pacs_texto", None)
+
+def _al_cambiar_modalidad():
+    limpiar_estado_hallazgos()
+
+def reiniciar_paciente():
+    plantillas_guardadas = st.session_state.get("plantillas_usuario", {})
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.session_state.plantillas_usuario = plantillas_guardadas
+    init_session_state()
+
+def es_ecografia(metodo):
+    return "Ecografía" in metodo
+
+def es_mamografia(metodo):
+    return metodo == "Mamografía"
+
+def obtener_tecnica_texto(metodo, tiene_protesis):
+    if es_ecografia(metodo):
+        return "Ultrasonido mamario de alta resolución con transductor lineal y evaluación Doppler Color."
+    texto = "Mamografía digital bilateral en proyecciones estándar."
+    if tiene_protesis != "No":
+        texto += " Incluye maniobras de Eklund."
+    return texto
+
+def obtener_composicion_texto(metodo, sexo_paciente):
+    if es_ecografia(metodo):
+        comp = st.session_state.get("comp_eco", DEFAULTS["comp_eco"])
+        return f"Ecoestructura de fondo tipo {comp.lower()}."
+    if sexo_paciente == "Masculino":
+        return "Tejido mamario masculino."
+    comp = st.session_state.get("comp_mammo", DEFAULTS["comp_mammo"])
+    return f"Composición mamaria tipo {comp.split(' - ')[0]}."
+
+def _linea_es_residuo_modalidad(linea, metodo):
+    linea_l = linea.lower()
+    if es_mamografia(metodo):
+        if "**ductos:**" in linea_l:
+            return True
+        if linea.strip().startswith("- **H"):
+            marcadores_eco = (
+                "nml", "quiste simple", "nódulo sólido", "nodulo solido",
+                "complejo / sólido-líquido", "anecoica", "ecotextura", "doppler",
+                "hipoecoica", "isoecoica", "hiperecoica",
+            )
+            return any(m in linea_l for m in marcadores_eco)
+    if es_ecografia(metodo):
+        if linea.strip().startswith("- **H"):
+            marcadores_mammo = ("calcificaciones", "asimetría", "asimetria", "nódulo (masa)", "nodulo (masa)")
+            return any(m in linea_l for m in marcadores_mammo)
+    return False
+
+def filtrar_resultado_por_modalidad(resultado, metodo):
+    """Depura descriptores/conclusión de la modalidad opuesta."""
+    desc_lineas = []
+    for linea in resultado.get("descriptores", "").split("\n"):
+        if linea.strip() and not _linea_es_residuo_modalidad(linea, metodo):
+            desc_lineas.append(linea)
+    desc_filtrado = "\n".join(desc_lineas)
+    if not desc_filtrado.strip():
+        desc_filtrado = "- **Parénquima:** Sin alteraciones estructurales dominantes.\n"
+
+    concl_lineas = []
+    for linea in resultado.get("conclusion", "").split("\n"):
+        if linea.strip() and not _linea_es_residuo_modalidad(linea, metodo):
+            concl_lineas.append(linea)
+    concl_filtrada = "\n".join(concl_lineas)
+    if not concl_filtrada.strip():
+        concl_filtrada = "No se evidencian signos imagenológicos focales sugestivos de malignidad."
+
+    return {
+        **resultado,
+        "descriptores": desc_filtrado + ("\n" if desc_filtrado else ""),
+        "conclusion": concl_filtrada,
+    }
+
+def filtrar_resultados_por_modalidad(resultados, metodo):
+    return {
+        mama: filtrar_resultado_por_modalidad(datos, metodo)
+        for mama, datos in resultados.items()
+    }
 
 def extraer_config_plantilla():
     return {k: st.session_state.get(k, DEFAULTS.get(k)) for k in PLANTILLA_KEYS}
@@ -413,13 +517,17 @@ def dispositivos_a_prosa(texto_dispositivos):
                 lineas.append(f"Generador de marcapasos con hallazgos compatibles con {detalle}.")
     return " ".join(lineas)
 
-def recomendacion_a_prosa(recomendacion, categoria):
+def recomendacion_a_prosa(recomendacion, categoria, metodo=None):
     rec = recomendacion.strip()
     if categoria in ("BI-RADS 1", "BI-RADS 2"):
         return "Se sugiere continuar con control de tamizaje anual según guías vigentes."
     if categoria == "BI-RADS 3":
+        if metodo and es_mamografia(metodo):
+            return "Se recomienda control mamográfico a corto plazo (6 meses) para documentar estabilidad."
         return "Se recomienda control ecográfico a corto plazo (6 meses) para documentar estabilidad."
     if valor_birads(categoria) >= 4:
+        if metodo and es_mamografia(metodo):
+            return "Se indica correlación histopatológica mediante biopsia estereotáxica o percutánea, según corresponda al hallazgo."
         return "Se indica correlación histopatológica mediante biopsia percutánea ecoguiada o estereotáxica, según corresponda al hallazgo."
     if "marcapasos" in rec.lower():
         return "Seguimiento oncológico anual. Resonancia magnética mamaria teóricamente indicada, pero contraindicada por presencia de dispositivo cardiaco implantable."
@@ -430,9 +538,24 @@ def recomendacion_a_prosa(recomendacion, categoria):
 def generar_informe_pacs(
     metodo, nombre_paciente, edad_paciente, indicacion, antecedente_ca,
     tecnica_texto, composicion_texto, texto_dispositivos,
-    resultados, global_cat, global_rec,
+    resultados, global_cat, global_rec, sexo_paciente="Femenino", tiene_protesis="No",
 ):
-    modalidad = "ECOGRAFÍA MAMARIA BILATERAL" if "Ecografía" in metodo else "MAMOGRAFÍA BILATERAL"
+    # Verificación explícita de modalidad activa (ignora residuos de la modalidad anterior)
+    metodo = st.session_state.get("metodo", metodo)
+    if es_mamografia(metodo):
+        modalidad = "MAMOGRAFÍA BILATERAL"
+        tecnica_texto = obtener_tecnica_texto(metodo, tiene_protesis)
+        composicion_texto = obtener_composicion_texto(metodo, sexo_paciente)
+        resultados = filtrar_resultados_por_modalidad(resultados, metodo)
+    elif es_ecografia(metodo):
+        modalidad = "ECOGRAFÍA MAMARIA BILATERAL"
+        tecnica_texto = obtener_tecnica_texto(metodo, tiene_protesis)
+        composicion_texto = obtener_composicion_texto(metodo, sexo_paciente)
+        resultados = filtrar_resultados_por_modalidad(resultados, metodo)
+    else:
+        modalidad = "ESTUDIO MAMARIO BILATERAL"
+        resultados = filtrar_resultados_por_modalidad(resultados, metodo)
+
     antecedente = (
         "sin antecedentes personales de cáncer de mama"
         if antecedente_ca == "Ninguno"
@@ -442,6 +565,8 @@ def generar_informe_pacs(
     prosa_mi = descriptores_a_prosa(resultados["Mama Izquierda"]["descriptores"])
     imp_md = conclusion_a_prosa(resultados["Mama Derecha"]["conclusion"], resultados["Mama Derecha"]["categoria"])
     imp_mi = conclusion_a_prosa(resultados["Mama Izquierda"]["conclusion"], resultados["Mama Izquierda"]["categoria"])
+
+    seccion_comp = "COMPOSICIÓN MAMARIA" if es_mamografia(metodo) else "ECOESTRUCTURA DE FONDO"
 
     informe = f"""INFORME DE {modalidad}
 
@@ -453,7 +578,7 @@ Antecedentes: {antecedente}.
 TÉCNICA
 {tecnica_texto}
 
-COMPOSICIÓN MAMARIA
+{seccion_comp}
 {composicion_texto.rstrip('.')}."""
 
     if texto_dispositivos.strip():
@@ -479,7 +604,7 @@ Mama izquierda: {imp_mi}
 Categoría global de evaluación: {global_cat}.
 
 RECOMENDACIÓN
-{recomendacion_a_prosa(global_rec, global_cat)}"""
+{recomendacion_a_prosa(global_rec, global_cat, metodo)}"""
 
     return informe
 
@@ -604,6 +729,11 @@ with st.sidebar:
 
     indicacion = st.selectbox("Indicación Clínica:", ["Tamizaje de rutina", "Seguimiento Oncológico", "Nódulo palpable / Mastalgia", "Evaluación de dispositivos", "Secreción por el pezón", "Ginecomastia en estudio"], key="indicacion")
 
+    st.markdown("<hr style='border-color: #cbd5e1; margin: 12px 0;'>", unsafe_allow_html=True)
+    if st.button("🔄 Reiniciar Paciente", use_container_width=True):
+        reiniciar_paciente()
+        st.rerun()
+
 # 3. CUERPO PRINCIPAL
 st.markdown("<h1 style='font-size: 28px; font-weight: 800; margin-bottom:0;'>ESTACIÓN DE TRABAJO RADIOLÓGICA</h1>", unsafe_allow_html=True)
 st.markdown("<p style='font-size: 12px; color: #0284c7; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-top:2px;'>ACR BI-RADS Atlas v5.0 • Módulo NML (Kim et al. 2025)</p>", unsafe_allow_html=True)
@@ -611,9 +741,18 @@ if st.session_state._plantilla_aplicada != "— Personalizado —":
     st.caption(f"📋 Plantilla activa: **{st.session_state._plantilla_aplicada}**")
 st.markdown("<br>", unsafe_allow_html=True)
 
-metodo = st.radio("Modalidad de Imagen Actual:", ["Ecografía (Ultrasonido)", "Mamografía"], horizontal=True, key="metodo")
-tecnica_texto = "Ultrasonido mamario de alta resolución con transductor lineal y evaluación Doppler Color." if "Ecografía" in metodo else "Mamografía digital bilateral en proyecciones estándar."
-if tiene_protesis != "No" and metodo == "Mamografía": tecnica_texto += " Incluye maniobras de Eklund."
+metodo = st.radio(
+    "Modalidad de Imagen Actual:",
+    ["Ecografía (Ultrasonido)", "Mamografía"],
+    horizontal=True,
+    key="metodo",
+    on_change=_al_cambiar_modalidad,
+)
+if st.session_state.get("_metodo_previo") != metodo:
+    st.session_state._metodo_previo = metodo
+
+tecnica_texto = obtener_tecnica_texto(metodo, tiene_protesis)
+composicion_texto = obtener_composicion_texto(metodo, sexo_paciente)
 
 col_datos, col_reporte = st.columns([1.15, 1.25])
 resultados = {"Mama Derecha": {}, "Mama Izquierda": {}}
@@ -645,10 +784,10 @@ with col_datos:
         
         if metodo == "Mamografía":
             comp_global = st.selectbox("Densidad Mamaria (ACR):", ["A - Adiposa", "B - Fibroglandular dispersa", "C - Heterogéneamente densa", "D - Extremadamente densa"], key="comp_mammo") if sexo_paciente == "Femenino" else "Tejido mamario masculino"
-            composicion_texto = f"Composición mamaria tipo {comp_global.split(' - ')[0]}." if sexo_paciente == "Femenino" else "Tejido mamario masculino."
+            composicion_texto = obtener_composicion_texto(metodo, sexo_paciente)
         else:
             comp_global = st.selectbox("Ecoestructura de Fondo:", ["Homogénea adiposa", "Homogénea fibroglandular", "Heterogénea"], key="comp_eco")
-            composicion_texto = f"Ecoestructura de fondo tipo {comp_global.lower()}."
+            composicion_texto = obtener_composicion_texto(metodo, sexo_paciente)
             
         st.markdown("<br>", unsafe_allow_html=True)
         tab_der, tab_izq = st.tabs(["🟢 MAMA DERECHA", "🔵 MAMA IZQUIERDA"])
@@ -707,7 +846,10 @@ with col_datos:
                         else: opciones.extend(["Nódulo Sólido", "Quiste Simple", "Complejo / Sólido-Líquido", "Lesión No Masa (NML)"])
                         if antecedente_ca != "Ninguno": opciones.append("Cicatriz / Distorsión Post-Tratamiento")
                         
-                        hallazgo = st.selectbox(f"Tipo de Hallazgo {i+1}:", opciones, key=f"h_{clave}_{i}")
+                        hkey = f"h_{clave}_{i}"
+                        if hkey in st.session_state and st.session_state[hkey] not in opciones:
+                            del st.session_state[hkey]
+                        hallazgo = st.selectbox(f"Tipo de Hallazgo {i+1}:", opciones, key=hkey)
                         cat_h, just_h, concl_h, desc_h = "BI-RADS 1", "", "", ""
                         
                         if "Cicatriz" in hallazgo:
@@ -949,8 +1091,9 @@ with col_reporte:
             metodo, nombre_paciente, edad_paciente, indicacion, antecedente_ca,
             tecnica_texto, composicion_texto, texto_dispositivos,
             resultados, global_cat, global_rec,
+            sexo_paciente=sexo_paciente, tiene_protesis=tiene_protesis,
         )
-        st.text_area("", value=informe_pacs, height=420, label_visibility="collapsed", key="informe_pacs_texto")
+        st.text_area("", value=informe_pacs, height=420, label_visibility="collapsed")
 
         pdf_bytes = generar_pdf_informe(
             informe_pacs,
