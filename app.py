@@ -107,38 +107,86 @@ PLANTILLAS_SISTEMA = {
     },
 }
 
+MODALIDAD_KEYS_FIJAS = {
+    "comp_mammo", "comp_eco", "hay_md", "hay_mi", "num_md", "num_mi", "ax_md", "ax_mi", "ed_md", "ed_mi",
+}
+HISTORICO_VACIO = {"Ecografia": {}, "Mamografia": {}}
+
+def init_historico_estudios():
+    if "historico_estudios" not in st.session_state:
+        st.session_state.historico_estudios = {"Ecografia": {}, "Mamografia": {}}
+
+def modalidad_historico_key(metodo):
+    return "Ecografia" if es_ecografia(metodo) else "Mamografia"
+
+def _claves_hallazgos_dinamicos():
+    return (
+        "h_", "morf_", "dist_", "asi_", "nml_", "dop_", "loc_", "m_",
+        "f_", "ma_", "prev_", "evo_", "plano_", "est_imp_", "ed_", "cal_", "cont_", "roi_",
+    )
+
+def es_clave_de_modalidad(key):
+    if key in MODALIDAD_KEYS_FIJAS:
+        return True
+    if key.startswith("up_") or key.startswith("btn_"):
+        return True
+    return any(key.startswith(p) for p in _claves_hallazgos_dinamicos())
+
 def init_session_state():
+    init_historico_estudios()
     if "plantillas_usuario" not in st.session_state:
         st.session_state.plantillas_usuario = {}
-    if "_metodo_previo" not in st.session_state:
-        st.session_state._metodo_previo = DEFAULTS["metodo"]
     for key, value in DEFAULTS.items():
         if key not in st.session_state:
             st.session_state[key] = value
+    if "_ultima_modalidad" not in st.session_state:
+        st.session_state._ultima_modalidad = st.session_state.get("metodo", DEFAULTS["metodo"])
 
-def _claves_hallazgos_dinamicos():
-    """Prefijos de claves de widgets por mama/hallazgo/modalidad."""
-    return (
-        "h_", "morf_", "dist_", "asi_", "nml_", "dop_", "loc_", "m_",
-        "f_", "ma_", "prev_", "evo_", "plano_", "est_imp_", "ed_", "cal_", "cont_",
-        "up_", "btn_", "roi_",
-    )
-
-def limpiar_estado_hallazgos():
-    """Elimina widgets de hallazgos y CAD al cambiar modalidad."""
-    prefijos = _claves_hallazgos_dinamicos()
+def limpiar_claves_modalidad_widgets():
     for key in list(st.session_state.keys()):
-        if any(key.startswith(p) for p in prefijos):
+        if es_clave_de_modalidad(key):
             del st.session_state[key]
-    for clave in ("md", "mi"):
-        st.session_state[f"hay_{clave}"] = DEFAULTS[f"hay_{clave}"]
-        st.session_state[f"num_{clave}"] = DEFAULTS[f"num_{clave}"]
-        st.session_state[f"ax_{clave}"] = DEFAULTS[f"ax_{clave}"]
-        st.session_state[f"ed_{clave}"] = DEFAULTS[f"ed_{clave}"]
-    st.session_state.pop("informe_pacs_texto", None)
+
+def snapshot_modalidad_actual():
+    data = {}
+    for key in list(st.session_state.keys()):
+        if not es_clave_de_modalidad(key):
+            continue
+        if key.startswith("up_") or key.startswith("btn_"):
+            continue
+        data[key] = st.session_state[key]
+    return data
+
+def guardar_modalidad_en_historico(metodo):
+    init_historico_estudios()
+    mod_key = modalidad_historico_key(metodo)
+    st.session_state.historico_estudios[mod_key] = snapshot_modalidad_actual()
+
+def aplicar_defaults_modalidad(metodo):
+    for k in ("hay_md", "hay_mi", "num_md", "num_mi", "ax_md", "ax_mi", "ed_md", "ed_mi"):
+        st.session_state[k] = DEFAULTS[k]
+    if es_mamografia(metodo):
+        st.session_state["comp_mammo"] = DEFAULTS["comp_mammo"]
+    else:
+        st.session_state["comp_eco"] = DEFAULTS["comp_eco"]
+
+def cargar_modalidad_desde_historico(metodo):
+    init_historico_estudios()
+    mod_key = modalidad_historico_key(metodo)
+    limpiar_claves_modalidad_widgets()
+    snapshot = st.session_state.historico_estudios.get(mod_key, {})
+    if snapshot:
+        for k, v in snapshot.items():
+            st.session_state[k] = v
+    else:
+        aplicar_defaults_modalidad(metodo)
 
 def _al_cambiar_modalidad():
-    limpiar_estado_hallazgos()
+    anterior = st.session_state.get("_ultima_modalidad")
+    if anterior and anterior != st.session_state.metodo:
+        guardar_modalidad_en_historico(anterior)
+    cargar_modalidad_desde_historico(st.session_state.metodo)
+    st.session_state._ultima_modalidad = st.session_state.metodo
 
 def reiniciar_paciente():
     plantillas_guardadas = st.session_state.get("plantillas_usuario", {})
@@ -146,6 +194,12 @@ def reiniciar_paciente():
         del st.session_state[key]
     st.session_state.plantillas_usuario = plantillas_guardadas
     init_session_state()
+    st.session_state.historico_estudios = {"Ecografia": {}, "Mamografia": {}}
+    aplicar_defaults_modalidad(st.session_state.metodo)
+    st.session_state._ultima_modalidad = st.session_state.metodo
+
+def modalidad_tiene_datos(mod_key):
+    return bool(st.session_state.historico_estudios.get(mod_key))
 
 def es_ecografia(metodo):
     return "Ecografía" in metodo
@@ -222,9 +276,16 @@ def extraer_config_plantilla():
     return {k: st.session_state.get(k, DEFAULTS.get(k)) for k in PLANTILLA_KEYS}
 
 def aplicar_plantilla(config):
+    guardar_modalidad_en_historico(st.session_state.get("_ultima_modalidad", st.session_state.metodo))
+    nuevo_metodo = config.get("metodo", st.session_state.metodo)
+    if nuevo_metodo != st.session_state.metodo:
+        limpiar_claves_modalidad_widgets()
+        aplicar_defaults_modalidad(nuevo_metodo)
     for key, value in config.items():
         if key in PLANTILLA_KEYS:
             st.session_state[key] = value
+    guardar_modalidad_en_historico(st.session_state.metodo)
+    st.session_state._ultima_modalidad = st.session_state.metodo
 
 def todas_las_plantillas():
     return ["— Personalizado —", *PLANTILLAS_SISTEMA.keys(), *st.session_state.get("plantillas_usuario", {}).keys()]
@@ -540,21 +601,18 @@ def generar_informe_pacs(
     tecnica_texto, composicion_texto, texto_dispositivos,
     resultados, global_cat, global_rec, sexo_paciente="Femenino", tiene_protesis="No",
 ):
-    # Verificación explícita de modalidad activa (ignora residuos de la modalidad anterior)
+    # Informe basado exclusivamente en la modalidad activa; la otra queda en historico_estudios
     metodo = st.session_state.get("metodo", metodo)
     if es_mamografia(metodo):
         modalidad = "MAMOGRAFÍA BILATERAL"
-        tecnica_texto = obtener_tecnica_texto(metodo, tiene_protesis)
-        composicion_texto = obtener_composicion_texto(metodo, sexo_paciente)
-        resultados = filtrar_resultados_por_modalidad(resultados, metodo)
     elif es_ecografia(metodo):
         modalidad = "ECOGRAFÍA MAMARIA BILATERAL"
-        tecnica_texto = obtener_tecnica_texto(metodo, tiene_protesis)
-        composicion_texto = obtener_composicion_texto(metodo, sexo_paciente)
-        resultados = filtrar_resultados_por_modalidad(resultados, metodo)
     else:
         modalidad = "ESTUDIO MAMARIO BILATERAL"
-        resultados = filtrar_resultados_por_modalidad(resultados, metodo)
+
+    tecnica_texto = obtener_tecnica_texto(metodo, tiene_protesis)
+    composicion_texto = obtener_composicion_texto(metodo, sexo_paciente)
+    resultados = filtrar_resultados_por_modalidad(resultados, metodo)
 
     antecedente = (
         "sin antecedentes personales de cáncer de mama"
@@ -748,8 +806,13 @@ metodo = st.radio(
     key="metodo",
     on_change=_al_cambiar_modalidad,
 )
-if st.session_state.get("_metodo_previo") != metodo:
-    st.session_state._metodo_previo = metodo
+badges = []
+if modalidad_tiene_datos("Ecografia"):
+    badges.append("Ecografía: datos guardados")
+if modalidad_tiene_datos("Mamografia"):
+    badges.append("Mamografía: datos guardados")
+if badges:
+    st.caption("💾 " + "  |  ".join(badges))
 
 tecnica_texto = obtener_tecnica_texto(metodo, tiene_protesis)
 composicion_texto = obtener_composicion_texto(metodo, sexo_paciente)
@@ -1111,3 +1174,6 @@ with col_reporte:
         )
         if not resolver_logo():
             st.caption("💡 Para incluir logo institucional, coloque `logo.png` en la carpeta `.streamlit/` o `assets/`.")
+
+guardar_modalidad_en_historico(st.session_state.metodo)
+st.session_state._ultima_modalidad = st.session_state.metodo
