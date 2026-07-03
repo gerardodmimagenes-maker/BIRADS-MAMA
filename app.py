@@ -2,8 +2,6 @@ import streamlit as st
 from pathlib import Path
 from datetime import datetime
 from PIL import Image, ImageDraw
-from fpdf import FPDF
-from fpdf.enums import XPos, YPos
 import time
 
 # 1. Configuración de la Suite Médica Premium
@@ -301,6 +299,9 @@ def _pdf_texto(texto):
     return texto.encode("latin-1", "replace").decode("latin-1")
 
 def generar_pdf_informe(informe_texto, nombre_paciente, medico="", categoria=""):
+    from fpdf import FPDF
+    from fpdf.enums import XPos, YPos
+
     pdf = FPDF(orientation="P", unit="mm", format="A4")
     pdf.set_margins(12, 12, 12)
     pdf.set_auto_page_break(auto=True, margin=18)
