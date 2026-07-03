@@ -2,7 +2,6 @@ import streamlit as st
 from pathlib import Path
 from datetime import datetime
 from PIL import Image, ImageDraw
-from fpdf import FPDF
 import time
 
 # 1. Configuración de la Suite Médica Premium
@@ -300,6 +299,9 @@ def _pdf_texto(texto):
     return texto.encode("latin-1", "replace").decode("latin-1")
 
 def generar_pdf_informe(informe_texto, nombre_paciente, medico="", categoria=""):
+    from fpdf import FPDF
+    from fpdf.enums import XPos, YPos
+
     pdf = FPDF(orientation="P", unit="mm", format="A4")
     pdf.set_margins(12, 12, 12)
     pdf.set_auto_page_break(auto=True, margin=18)
@@ -310,18 +312,18 @@ def generar_pdf_informe(informe_texto, nombre_paciente, medico="", categoria="")
         pdf.image(str(logo), x=12, y=12, w=35)
         pdf.set_xy(52, 14)
         pdf.set_font("Helvetica", "B", 15)
-        pdf.cell(pdf.epw - 40, 8, _pdf_texto(HOSPITAL_NOMBRE), ln=True)
+        pdf.cell(pdf.epw - 40, 8, _pdf_texto(HOSPITAL_NOMBRE), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.set_x(52)
         pdf.set_font("Helvetica", "", 9)
         pdf.set_text_color(80, 80, 80)
-        pdf.cell(pdf.epw - 40, 5, _pdf_texto("Servicio de Diagnóstico por Imágenes — Unidad de Mastología"), ln=True)
+        pdf.cell(pdf.epw - 40, 5, _pdf_texto("Servicio de Diagnóstico por Imágenes — Unidad de Mastología"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.set_y(44)
     else:
         pdf.set_font("Helvetica", "B", 15)
-        pdf.cell(0, 8, _pdf_texto(HOSPITAL_NOMBRE), ln=True, align="C")
+        pdf.cell(0, 8, _pdf_texto(HOSPITAL_NOMBRE), new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
         pdf.set_font("Helvetica", "", 9)
         pdf.set_text_color(80, 80, 80)
-        pdf.cell(0, 5, _pdf_texto("Servicio de Diagnóstico por Imágenes — Unidad de Mastología"), ln=True, align="C")
+        pdf.cell(0, 5, _pdf_texto("Servicio de Diagnóstico por Imágenes — Unidad de Mastología"), new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
         pdf.ln(4)
 
     pdf.set_text_color(0, 0, 0)
@@ -364,12 +366,21 @@ def generar_pdf_informe(informe_texto, nombre_paciente, medico="", categoria="")
     )
     return bytes(pdf.output())
 
+@st.cache_data(show_spinner=False)
+def obtener_pdf_bytes(informe_texto, nombre_paciente, medico="", categoria=""):
+    return generar_pdf_informe(informe_texto, nombre_paciente, medico, categoria)
+
 init_session_state()
 # --- FUNCIÓN DE UTILIDAD BI-RADS ---
 def valor_birads(cat):
     val = {"1":1, "2":2, "3":3, "4A":4.1, "4B":4.2, "4C":4.3, "5":5, "6":6}
     c = cat.replace("BI-RADS ", "").strip()
     return val.get(c, 1)
+
+def _number_input_restaurable(label, key, default, **kwargs):
+    if key not in st.session_state:
+        kwargs["value"] = default
+    return st.number_input(label, key=key, **kwargs)
 
 def es_categoria_critica(cat):
     return cat in ("BI-RADS 4C", "BI-RADS 5")
@@ -1004,7 +1015,7 @@ with col_datos:
                             with c1: 
                                 if metodo == "Mamografía": localizacion = st.selectbox("Cuadrante:", ["CSE", "CSI", "CIE", "CII", "Retroareolar", "Central", "Prolongación Axilar"], key=f"loc_{clave}_{i}")
                                 else: localizacion = st.selectbox("Radio Horario:", [f"Hora {x}" for x in range(1, 13)] + ["Retroareolar", "Central"], key=f"loc_{clave}_{i}")
-                            with c2: med = st.number_input("Dimensión máxima (mm):", min_value=0.0, value=12.0, key=f"m_{clave}_{i}")
+                            with c2: med = _number_input_restaurable("Dimensión máxima (mm):", f"m_{clave}_{i}", 12.0, min_value=0.0)
                             
                             if hallazgo == "Quiste Simple":
                                 desc_h = f"Imagen **anecoica**, circunscrita, con refuerzo posterior en **{localizacion}**, de **{med} mm**."
@@ -1066,7 +1077,7 @@ with col_datos:
                 if eval_ductos:
                     cd1, cd2 = st.columns(2)
                     with cd1: 
-                        calibre = st.number_input("Calibre (mm):", min_value=0.0, value=1.5, step=0.1, key=f"cal_{clave}")
+                        calibre = _number_input_restaurable("Calibre (mm):", f"cal_{clave}", 1.5, min_value=0.0, step=0.1)
                         st.caption("ℹ️ **Ref:** Normal ≤ 2.0 mm | Ectasia 2.1 - 3.0 mm | Dilatación > 3.0 mm")
                     with cd2: contenido = st.selectbox("Contenido:", ["Anecoico (Líquido)", "Ecos internos", "Masa intraductal"], key=f"cont_{clave}")
                     
@@ -1156,9 +1167,9 @@ with col_reporte:
             resultados, global_cat, global_rec,
             sexo_paciente=sexo_paciente, tiene_protesis=tiene_protesis,
         )
-        st.text_area("", value=informe_pacs, height=420, label_visibility="collapsed")
+        st.text_area("Informe PACS", value=informe_pacs, height=420, label_visibility="collapsed")
 
-        pdf_bytes = generar_pdf_informe(
+        pdf_bytes = obtener_pdf_bytes(
             informe_pacs,
             nombre_paciente,
             medico=st.session_state.get("perfil_medico", ""),
