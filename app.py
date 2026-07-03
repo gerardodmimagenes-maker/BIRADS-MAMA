@@ -1167,22 +1167,40 @@ with col_reporte:
             resultados, global_cat, global_rec,
             sexo_paciente=sexo_paciente, tiene_protesis=tiene_protesis,
         )
-        st.text_area("Informe PACS", value=informe_pacs, height=420, label_visibility="collapsed")
+        st.text_area(
+            "Informe PACS",
+            value=informe_pacs,
+            height=420,
+            label_visibility="collapsed",
+            disabled=True,
+        )
 
-        pdf_bytes = obtener_pdf_bytes(
+        pdf_cache_key = (
             informe_pacs,
             nombre_paciente,
-            medico=st.session_state.get("perfil_medico", ""),
-            categoria=global_cat,
+            st.session_state.get("perfil_medico", ""),
+            global_cat,
         )
+        if st.session_state.get("_pdf_cache_key") != pdf_cache_key:
+            st.session_state.pop("_pdf_bytes", None)
+            st.session_state["_pdf_cache_key"] = pdf_cache_key
+
         nombre_archivo = f"Informe_BIRADS_{nombre_paciente.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
-        st.download_button(
-            label="⬇ Descargar Informe PDF",
-            data=pdf_bytes,
-            file_name=nombre_archivo,
-            mime="application/pdf",
-            use_container_width=True,
-        )
+        if st.button("📄 Preparar Informe PDF", use_container_width=True):
+            st.session_state["_pdf_bytes"] = obtener_pdf_bytes(
+                informe_pacs,
+                nombre_paciente,
+                medico=st.session_state.get("perfil_medico", ""),
+                categoria=global_cat,
+            )
+        if st.session_state.get("_pdf_bytes"):
+            st.download_button(
+                label="⬇ Descargar Informe PDF",
+                data=st.session_state["_pdf_bytes"],
+                file_name=nombre_archivo,
+                mime="application/pdf",
+                use_container_width=True,
+            )
         if not resolver_logo():
             st.caption("💡 Para incluir logo institucional, coloque `logo.png` en la carpeta `.streamlit/` o `assets/`.")
 
