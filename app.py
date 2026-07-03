@@ -364,6 +364,10 @@ def generar_pdf_informe(informe_texto, nombre_paciente, medico="", categoria="")
     )
     return bytes(pdf.output())
 
+@st.cache_data(show_spinner=False)
+def obtener_pdf_bytes(informe_texto, nombre_paciente, medico="", categoria=""):
+    return generar_pdf_informe(informe_texto, nombre_paciente, medico, categoria)
+
 init_session_state()
 # --- FUNCIÓN DE UTILIDAD BI-RADS ---
 def valor_birads(cat):
@@ -1250,7 +1254,7 @@ with col_reporte:
         )
         st.text_area("", value=informe_pacs, height=420, label_visibility="collapsed")
 
-        pdf_bytes = generar_pdf_informe(
+        pdf_bytes = obtener_pdf_bytes(
             informe_pacs,
             nombre_paciente,
             medico=st.session_state.get("perfil_medico", ""),
