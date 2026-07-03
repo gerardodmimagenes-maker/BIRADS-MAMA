@@ -114,6 +114,182 @@ def evaluar_nml(echogenicidad, distribucion, localizacion, asociados, correlacio
         desc_h,
     )
 
+def limpiar_md(texto):
+    return texto.replace("**", "").replace("*", "").strip()
+
+def _oracion_hallazgo_focal(cuerpo, es_primero):
+    cuerpo = limpiar_md(cuerpo).rstrip(".")
+    if not cuerpo:
+        return ""
+    lc = cuerpo[0].lower() + cuerpo[1:]
+    conectores = ("se observa", "se identifica", "se describe", "se evidencia", "imagen")
+    if any(cuerpo.lower().startswith(c) for c in conectores):
+        texto = cuerpo if cuerpo[0].isupper() else cuerpo[0].upper() + cuerpo[1:]
+    elif es_primero:
+        texto = f"Se identifica {lc}"
+    else:
+        texto = f"Asimismo, se identifica {lc}"
+    return texto + "."
+
+def descriptores_a_prosa(descriptores):
+    oraciones = []
+    hallazgo_idx = 0
+    for linea in descriptores.split("\n"):
+        linea = linea.strip()
+        if not linea.startswith("- "):
+            continue
+        contenido = limpiar_md(linea[2:])
+        if ":" not in contenido:
+            if contenido:
+                oraciones.append(contenido if contenido.endswith(".") else contenido + ".")
+            continue
+        prefijo, _, cuerpo = contenido.partition(":")
+        prefijo, cuerpo = prefijo.strip(), cuerpo.strip()
+        if prefijo == "Parénquima":
+            if "sin alteraciones" in cuerpo.lower():
+                oraciones.append("Parénquima mamario sin alteraciones estructurales dominantes.")
+            else:
+                oraciones.append(cuerpo if cuerpo.endswith(".") else cuerpo + ".")
+        elif prefijo == "Implante":
+            txt = cuerpo if cuerpo.lower().startswith("implante") else f"Implante mamario {cuerpo[0].lower()}{cuerpo[1:]}"
+            oraciones.append(txt if txt.endswith(".") else txt + ".")
+        elif prefijo == "Ductos":
+            oraciones.append(f"A nivel retroareolar, sistema ductal {cuerpo.lower().rstrip('.')}.")
+        elif prefijo == "Axila":
+            if "sospechosa" in cuerpo.lower():
+                oraciones.append("En región axilar se evidencian adenopatías morfológicamente sospechosas.")
+            elif "intramamario" in cuerpo.lower():
+                oraciones.append("Se identifica ganglio intramamario de morfología conservada.")
+            else:
+                oraciones.append("Región axilar sin evidencia de adenopatías significativas.")
+        elif prefijo.startswith("H"):
+            oracion = _oracion_hallazgo_focal(cuerpo, hallazgo_idx == 0)
+            if oracion:
+                oraciones.append(oracion)
+                hallazgo_idx += 1
+        elif cuerpo:
+            oraciones.append(cuerpo if cuerpo.endswith(".") else cuerpo + ".")
+    if not oraciones:
+        return "Sin hallazgos mamarios significativos."
+    return " ".join(oraciones)
+
+def conclusion_a_prosa(conclusion, categoria):
+    frases = []
+    for linea in conclusion.split("\n"):
+        linea = limpiar_md(linea.strip())
+        if not linea:
+            continue
+        if linea.startswith("- "):
+            linea = linea[2:]
+        if linea.lower().startswith("hallazgo"):
+            _, _, linea = linea.partition(":")
+            linea = linea.strip()
+        if linea.startswith("Implante:") or linea.startswith("Axila:"):
+            frases.append(linea if linea.endswith(".") else linea + ".")
+        elif linea:
+            frases.append(linea if linea.endswith(".") else linea + ".")
+    if not frases:
+        if categoria == "BI-RADS 1":
+            return f"Estudio negativo. Clasificación {categoria}."
+        if categoria == "BI-RADS 2":
+            return f"Hallazgos benignos. Clasificación {categoria}."
+        return f"Clasificación {categoria}."
+    texto = " ".join(frases)
+    if categoria not in texto:
+        texto += f" Impresión: {categoria}."
+    return texto
+
+def dispositivos_a_prosa(texto_dispositivos):
+    lineas = []
+    for linea in texto_dispositivos.split("\n"):
+        linea = limpiar_md(linea.strip())
+        if not linea.startswith("- "):
+            continue
+        cuerpo = linea[2:]
+        if "reservorio" in cuerpo.lower() or "port-a-cath" in cuerpo.lower():
+            if "conservado" in cuerpo.lower():
+                lineas.append("Reservorio venoso subcutáneo (Port-a-Cath) de aspecto conservado, sin complicaciones pericatéter evidentes.")
+            else:
+                detalle = cuerpo.split("asociado a")[-1].strip().rstrip(".") if "asociado" in cuerpo.lower() else cuerpo
+                lineas.append(f"Reservorio venoso subcutáneo con hallazgos compatibles con {detalle}.")
+        elif "marcapasos" in cuerpo.lower():
+            if "conservado" in cuerpo.lower():
+                lineas.append("Generador de marcapasos en región infraclavicular, de aspecto conservado.")
+            else:
+                detalle = cuerpo.split("asociado a")[-1].strip().rstrip(".") if "asociado" in cuerpo.lower() else cuerpo
+                lineas.append(f"Generador de marcapasos con hallazgos compatibles con {detalle}.")
+    return " ".join(lineas)
+
+def recomendacion_a_prosa(recomendacion, categoria):
+    rec = recomendacion.strip()
+    if categoria in ("BI-RADS 1", "BI-RADS 2"):
+        return "Se sugiere continuar con control de tamizaje anual según guías vigentes."
+    if categoria == "BI-RADS 3":
+        return "Se recomienda control ecográfico a corto plazo (6 meses) para documentar estabilidad."
+    if valor_birads(categoria) >= 4:
+        return "Se indica correlación histopatológica mediante biopsia percutánea ecoguiada o estereotáxica, según corresponda al hallazgo."
+    if "marcapasos" in rec.lower():
+        return "Seguimiento oncológico anual. Resonancia magnética mamaria teóricamente indicada, pero contraindicada por presencia de dispositivo cardiaco implantable."
+    if "resonancia" in rec.lower():
+        return "Seguimiento anual con consideración de resonancia magnética mamaria con contraste en contexto de antecedente oncológico."
+    return rec if rec.endswith(".") else rec + "."
+
+def generar_informe_pacs(
+    metodo, nombre_paciente, edad_paciente, indicacion, antecedente_ca,
+    tecnica_texto, composicion_texto, texto_dispositivos,
+    resultados, global_cat, global_rec,
+):
+    modalidad = "ECOGRAFÍA MAMARIA BILATERAL" if "Ecografía" in metodo else "MAMOGRAFÍA BILATERAL"
+    antecedente = (
+        "sin antecedentes personales de cáncer de mama"
+        if antecedente_ca == "Ninguno"
+        else antecedente_ca.lower()
+    )
+    prosa_md = descriptores_a_prosa(resultados["Mama Derecha"]["descriptores"])
+    prosa_mi = descriptores_a_prosa(resultados["Mama Izquierda"]["descriptores"])
+    imp_md = conclusion_a_prosa(resultados["Mama Derecha"]["conclusion"], resultados["Mama Derecha"]["categoria"])
+    imp_mi = conclusion_a_prosa(resultados["Mama Izquierda"]["conclusion"], resultados["Mama Izquierda"]["categoria"])
+
+    informe = f"""INFORME DE {modalidad}
+
+Paciente: {nombre_paciente}
+Edad: {edad_paciente} años
+Indicación del estudio: {indicacion.lower()}.
+Antecedentes: {antecedente}.
+
+TÉCNICA
+{tecnica_texto}
+
+COMPOSICIÓN MAMARIA
+{composicion_texto.rstrip('.')}."""
+
+    if texto_dispositivos.strip():
+        informe += f"""
+
+DISPOSITIVOS Y HALLAZGOS ASOCIADOS
+{dispositivos_a_prosa(texto_dispositivos)}"""
+
+    informe += f"""
+
+HALLAZGOS
+
+Mama derecha: {prosa_md}
+
+Mama izquierda: {prosa_mi}
+
+IMPRESIÓN DIAGNÓSTICA
+
+Mama derecha: {imp_md}
+
+Mama izquierda: {imp_mi}
+
+Categoría global de evaluación: {global_cat}.
+
+RECOMENDACIÓN
+{recomendacion_a_prosa(global_rec, global_cat)}"""
+
+    return informe
+
 # 🎨 Estilos estéticos
 st.markdown("""
     <style>
@@ -503,25 +679,9 @@ with col_reporte:
     # 6. INFORME PARA PACS
     with st.container(border=True):
         st.markdown("<h3 style='margin-top:0; font-size: 16px;'>📄 Informe para PACS</h3>", unsafe_allow_html=True)
-        seccion_dispositivos = f"\nDISPOSITIVOS E IMPLANTES EXTRAS:\n{texto_dispositivos}" if texto_dispositivos else ""
-        
-        informe_pacs = f"""INFORME DE MASTOLOGÍA - {metodo.upper()}
-Paciente: {nombre_paciente} | Edad: {edad_paciente} años
-Antecedente Oncológico: {antecedente_ca}
-
-PATRÓN TISULAR: {composicion_texto}{seccion_dispositivos}
-HALLAZGOS:
-MAMA DERECHA:
-{resultados["Mama Derecha"]["descriptores"].replace("**", "")}
-MAMA IZQUIERDA:
-{resultados["Mama Izquierda"]["descriptores"].replace("**", "")}
-IMPRESIÓN DIAGNÓSTICA:
-- MD: 
-{resultados["Mama Derecha"]["conclusion"].replace("**", "")} ({resultados["Mama Derecha"]["categoria"]})
-- MI: 
-{resultados["Mama Izquierda"]["conclusion"].replace("**", "")} ({resultados["Mama Izquierda"]["categoria"]})
-
-CATEGORÍA GLOBAL: {global_cat}
-RECOMENDACIÓN: {global_rec}
-"""
-        st.text_area("", value=informe_pacs, height=360, label_visibility="collapsed")
+        informe_pacs = generar_informe_pacs(
+            metodo, nombre_paciente, edad_paciente, indicacion, antecedente_ca,
+            tecnica_texto, composicion_texto, texto_dispositivos,
+            resultados, global_cat, global_rec,
+        )
+        st.text_area("", value=informe_pacs, height=420, label_visibility="collapsed")
