@@ -915,12 +915,23 @@ with st.sidebar:
     sexo_paciente = st.radio("Sexo Biológico:", ["Femenino", "Masculino"], horizontal=True, key="sexo_paciente")
 
     st.markdown("<h3 style='color: #0f172a; font-size: 15px; margin-top:10px;'>🎗️ Antecedentes Oncológicos Personales</h3>", unsafe_allow_html=True)
-    antecedente_ca = st.radio("Antecedente Quirúrgico Oncológico:", ["Ninguno", "Sí (Cirugía Conservadora)", "Sí (Mastectomía Radical)"], key="antecedente_ca")
+    antecedente_ca = st.radio(
+        "¿Antecedente Oncológico Mamario? (relevante para el estudio, según BI-RADS/NML)",
+        ["Ninguno", "Sí (Cirugía Conservadora)", "Sí (Mastectomía Radical)"],
+        format_func=lambda opcion: "No" if opcion == "Ninguno" else opcion,
+        key="antecedente_ca",
+    )
     if antecedente_ca != "Ninguno":
         recibio_rt = st.checkbox("Recibió Radioterapia", key="recibio_rt")
     else:
         st.session_state.recibio_rt = False
         recibio_rt = False
+
+    otro_antecedente_oncologico = st.text_input(
+        "Otro antecedente oncológico (no mamario / no influye en el estudio):",
+        key="otro_antecedente_oncologico",
+        placeholder="Ej: Linfoma tratado en 2018, Ca. de tiroides operado...",
+    )
 
     st.markdown("<h3 style='color: #0f172a; font-size: 15px; margin-top:10px;'>🧬 Antecedente Heredofamiliar (AHF)</h3>", unsafe_allow_html=True)
     with st.expander("Evaluar riesgo por AHF"):
@@ -1336,6 +1347,11 @@ with col_reporte:
                 + (f" ({riesgo_ahf['subcategoria_indicacion']})" if riesgo_ahf["subcategoria_indicacion"] else "") + ".\n"
                 "Criterios identificados: " + "; ".join(riesgo_ahf["criterios_positivos"]) + ".\n"
                 + riesgo_ahf["recomendacion"]
+            )
+        if otro_antecedente_oncologico.strip():
+            informe_pacs += (
+                "\n\nOTROS ANTECEDENTES ONCOLÓGICOS (no mamarios, sin impacto directo en la interpretación de este estudio)\n"
+                + otro_antecedente_oncologico.strip()
             )
         st.text_area("Informe PACS", value=informe_pacs, height=420, label_visibility="collapsed")
 
