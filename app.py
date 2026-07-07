@@ -914,7 +914,7 @@ with st.sidebar:
     edad_paciente = st.number_input("Edad:", min_value=15, max_value=110, key="edad_paciente")
     sexo_paciente = st.radio("Sexo Biológico:", ["Femenino", "Masculino"], horizontal=True, key="sexo_paciente")
 
-    st.markdown("<h3 style='color: #0f172a; font-size: 15px; margin-top:10px;'>🎗️ Antecedentes Oncológicos</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color: #0f172a; font-size: 15px; margin-top:10px;'>🎗️ Antecedentes Oncológicos Personales</h3>", unsafe_allow_html=True)
     antecedente_ca = st.radio("Antecedente Quirúrgico Oncológico:", ["Ninguno", "Sí (Cirugía Conservadora)", "Sí (Mastectomía Radical)"], key="antecedente_ca")
     if antecedente_ca != "Ninguno":
         recibio_rt = st.checkbox("Recibió Radioterapia", key="recibio_rt")
