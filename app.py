@@ -382,6 +382,60 @@ def _number_input_restaurable(label, key, default, **kwargs):
         kwargs["value"] = default
     return st.number_input(label, key=key, **kwargs)
 
+def evaluar_riesgo_ahf(banderas):
+    """
+    Evaluación de riesgo por Antecedente Heredofamiliar (AHF) de cáncer de mama,
+    según criterios estándar de tamizaje suplementario (ACS/NCCN, riesgo de por
+    vida >= 20-25%). El resultado se estructura conforme a la indicación BI-RADS
+    v2025 'Asymptomatic Screening — Elevated risk' (Tabla 4, sección MRI, Reporting
+    System, pág. 711 del Manual), que define las subcategorías 'Gene mutation' y
+    'Estimated cancer risk' como historia clínica relevante a documentar.
+
+    Esta función es aditiva y no modifica ninguna lógica de evaluación BI-RADS
+    de hallazgos (evaluar_nml, categorización de mama, etc.) ya existente.
+    """
+    etiquetas_ahf = {
+        "mutacion_conocida": "Mutación genética patogénica conocida (BRCA1/2, PALB2, TP53, PTEN u otra) en la paciente o un familiar de 1er grado",
+        "sindrome_genetico": "Síndrome genético conocido (Li-Fraumeni, Cowden/PTEN, Bannayan-Riley-Ruvalcaba)",
+        "familiar_precoz": "Familiar de 1er grado con cáncer de mama diagnosticado a los ≤ 50 años",
+        "multiples_familiares": "≥ 2 familiares (1er o 2do grado, mismo lado) con cáncer de mama y/o de ovario",
+        "ovario": "Antecedente personal o familiar de cáncer de ovario",
+        "masculino": "Familiar masculino con cáncer de mama",
+        "ashkenazi": "Ascendencia judía Ashkenazi con antecedente familiar de cáncer de mama/ovario",
+        "radioterapia": "Radioterapia torácica entre los 10 y 30 años de edad (ej. Linfoma de Hodgkin)",
+    }
+    claves_geneticas = ("mutacion_conocida", "sindrome_genetico")
+
+    positivos = [clave for clave, marcado in banderas.items() if marcado and clave in etiquetas_ahf]
+    riesgo_elevado = len(positivos) > 0
+
+    subcategoria_indicacion = None
+    if any(clave in positivos for clave in claves_geneticas):
+        subcategoria_indicacion = "Gene mutation"
+    elif riesgo_elevado:
+        subcategoria_indicacion = "Estimated cancer risk"
+
+    if riesgo_elevado:
+        recomendacion = (
+            "Riesgo heredofamiliar ELEVADO (estimado ≥20% de riesgo de por vida). "
+            "Se recomienda tamizaje suplementario con Resonancia Magnética (RM) mamaria "
+            "contrastada anual, en adición a la mamografía anual, según criterios ACS/NCCN. "
+            "Considerar interconsulta con Genética Oncológica."
+        )
+    else:
+        recomendacion = (
+            "No se identifican criterios de riesgo heredofamiliar elevado. "
+            "Continuar tamizaje estándar según guías vigentes."
+        )
+
+    return {
+        "riesgo_elevado": riesgo_elevado,
+        "criterios_positivos": [etiquetas_ahf[c] for c in positivos],
+        "indicacion_estructurada": "Asymptomatic Screening — Elevated risk" if riesgo_elevado else None,
+        "subcategoria_indicacion": subcategoria_indicacion,
+        "recomendacion": recomendacion,
+    }
+
 def es_categoria_critica(cat):
     return cat in ("BI-RADS 4C", "BI-RADS 5")
 
@@ -868,6 +922,24 @@ with st.sidebar:
         st.session_state.recibio_rt = False
         recibio_rt = False
 
+    st.markdown("<h3 style='color: #0f172a; font-size: 15px; margin-top:10px;'>🧬 Antecedente Heredofamiliar (AHF)</h3>", unsafe_allow_html=True)
+    with st.expander("Evaluar riesgo por AHF"):
+        ahf_banderas = {
+            "mutacion_conocida": st.checkbox("Mutación genética patogénica conocida (BRCA1/2, PALB2, TP53, PTEN u otra) en la paciente o familiar de 1er grado", key="ahf_mutacion_conocida"),
+            "sindrome_genetico": st.checkbox("Síndrome genético conocido (Li-Fraumeni, Cowden/PTEN, Bannayan-Riley-Ruvalcaba)", key="ahf_sindrome_genetico"),
+            "familiar_precoz": st.checkbox("Familiar de 1er grado con cáncer de mama diagnosticado ≤ 50 años", key="ahf_familiar_precoz"),
+            "multiples_familiares": st.checkbox("≥ 2 familiares (1er o 2do grado, mismo lado) con cáncer de mama y/o ovario", key="ahf_multiples_familiares"),
+            "ovario": st.checkbox("Antecedente personal o familiar de cáncer de ovario", key="ahf_ovario"),
+            "masculino": st.checkbox("Familiar masculino con cáncer de mama", key="ahf_masculino"),
+            "ashkenazi": st.checkbox("Ascendencia judía Ashkenazi con antecedente familiar de mama/ovario", key="ahf_ashkenazi"),
+            "radioterapia": st.checkbox("Radioterapia torácica entre los 10-30 años (ej. Linfoma de Hodgkin)", key="ahf_radioterapia"),
+        }
+    riesgo_ahf = evaluar_riesgo_ahf(ahf_banderas)
+    if riesgo_ahf["riesgo_elevado"]:
+        st.warning("🧬 Riesgo heredofamiliar ELEVADO — requiere tamizaje suplementario con RM mamaria.")
+    else:
+        st.caption("🧬 AHF: sin criterios de riesgo elevado identificados.")
+
     st.markdown("<h3 style='color: #0f172a; font-size: 15px; margin-top:10px;'>⚙️ Dispositivos e Implantes</h3>", unsafe_allow_html=True)
     tiene_protesis = "No"
     if sexo_paciente == "Femenino" or antecedente_ca == "Sí (Mastectomía Radical)":
@@ -1219,6 +1291,9 @@ if alerta_critica:
         unsafe_allow_html=True,
     )
 
+if riesgo_ahf["riesgo_elevado"]:
+    st.info(f"🧬 **Riesgo Heredofamiliar Elevado** — {riesgo_ahf['recomendacion']}")
+
 # 5. COLUMNA DERECHA: RESPUESTA DE LA IA
 with col_reporte:
     with st.container(border=True):
@@ -1254,6 +1329,14 @@ with col_reporte:
             resultados, global_cat, global_rec,
             sexo_paciente=sexo_paciente, tiene_protesis=tiene_protesis,
         )
+        if riesgo_ahf["riesgo_elevado"]:
+            informe_pacs += (
+                "\n\nEVALUACIÓN DE RIESGO POR ANTECEDENTE HEREDOFAMILIAR (AHF)\n"
+                "Indicación estructurada (BI-RADS v2025): " + riesgo_ahf["indicacion_estructurada"]
+                + (f" ({riesgo_ahf['subcategoria_indicacion']})" if riesgo_ahf["subcategoria_indicacion"] else "") + ".\n"
+                "Criterios identificados: " + "; ".join(riesgo_ahf["criterios_positivos"]) + ".\n"
+                + riesgo_ahf["recomendacion"]
+            )
         st.text_area("Informe PACS", value=informe_pacs, height=420, label_visibility="collapsed")
 
         pdf_bytes = obtener_pdf_bytes(
