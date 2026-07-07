@@ -1,8 +1,14 @@
 import streamlit as st
 from pathlib import Path
 from datetime import datetime
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, UnidentifiedImageError
 import time
+
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+except ImportError:
+    pass
 
 # 1. Configuración de la Suite Médica Premium
 st.set_page_config(
@@ -1021,9 +1027,22 @@ resultados = {"Mama Derecha": {}, "Mama Izquierda": {}}
 # --- FUNCIÓN REUTILIZABLE DE VISIÓN IA ---
 def modulo_vision_ia(clave_mama):
     st.markdown(f"**📸 Telemetría PACS y Detección CAD ({clave_mama})**")
-    f = st.file_uploader(f"Cargar imagen representativa:", type=["png", "jpg", "jpeg"], key=f"up_{clave_mama}")
+    f = st.file_uploader(
+        f"Cargar imagen representativa:",
+        type=["png", "jpg", "jpeg", "webp", "heic", "heif", "bmp", "tiff"],
+        key=f"up_{clave_mama}",
+    )
     if f:
-        img = Image.open(f)
+        try:
+            img = Image.open(f)
+            img.load()
+        except (UnidentifiedImageError, OSError):
+            st.error(
+                "⚠️ No se pudo abrir esta imagen. Si la tomaste con un iPhone, puede estar en "
+                "formato HEIC no compatible con este dispositivo/navegador: probá exportarla o "
+                "compartirla como JPG/PNG y volvé a cargarla."
+            )
+            return
         c1, c2 = st.columns(2)
         with c1: st.image(img, caption="Original", use_container_width=True)
         with c2:
