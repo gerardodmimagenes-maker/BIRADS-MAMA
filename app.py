@@ -20,7 +20,7 @@ LOGO_CANDIDATOS = [
 ]
 
 PLANTILLA_KEYS = [
-    "nombre_paciente", "edad_paciente", "sexo_paciente", "antecedente_ca", "recibio_rt",
+    "nombre_paciente", "edad_paciente", "sexo_paciente", "tiene_ca_mama_personal", "tipo_cirugia_mama", "recibio_rt",
     "tiene_protesis", "tiene_portacath", "estado_portacath", "tiene_marcapasos",
     "estado_marcapasos", "indicacion", "metodo", "comp_mammo", "comp_eco",
     "hay_md", "hay_mi", "num_md", "num_mi", "ax_md", "ax_mi", "ed_md", "ed_mi",
@@ -30,7 +30,8 @@ DEFAULTS = {
     "nombre_paciente": "Paciente_Anónima",
     "edad_paciente": 42,
     "sexo_paciente": "Femenino",
-    "antecedente_ca": "Ninguno",
+    "tiene_ca_mama_personal": "No",
+    "tipo_cirugia_mama": "Cirugía Conservadora (Tumorectomía/Cuadrantectomía)",
     "recibio_rt": False,
     "tiene_protesis": "No",
     "tiene_portacath": False,
@@ -57,7 +58,7 @@ DEFAULTS = {
 PLANTILLAS_SISTEMA = {
     "Tamizaje normal": {
         "indicacion": "Tamizaje de rutina",
-        "antecedente_ca": "Ninguno",
+        "tiene_ca_mama_personal": "No",
         "recibio_rt": False,
         "sexo_paciente": "Femenino",
         "tiene_protesis": "No",
@@ -74,7 +75,8 @@ PLANTILLAS_SISTEMA = {
     },
     "Seguimiento post-Qx": {
         "indicacion": "Seguimiento Oncológico",
-        "antecedente_ca": "Sí (Cirugía Conservadora)",
+        "tiene_ca_mama_personal": "Sí",
+        "tipo_cirugia_mama": "Cirugía Conservadora (Tumorectomía/Cuadrantectomía)",
         "recibio_rt": True,
         "sexo_paciente": "Femenino",
         "tiene_protesis": "No",
@@ -91,7 +93,7 @@ PLANTILLAS_SISTEMA = {
     },
     "Nódulo palpable (Eco)": {
         "indicacion": "Nódulo palpable / Mastalgia",
-        "antecedente_ca": "Ninguno",
+        "tiene_ca_mama_personal": "No",
         "recibio_rt": False,
         "sexo_paciente": "Femenino",
         "metodo": "Ecografía (Ultrasonido)",
@@ -915,12 +917,27 @@ with st.sidebar:
     sexo_paciente = st.radio("Sexo Biológico:", ["Femenino", "Masculino"], horizontal=True, key="sexo_paciente")
 
     st.markdown("<h3 style='color: #0f172a; font-size: 15px; margin-top:10px;'>🎗️ Antecedentes Oncológicos Personales</h3>", unsafe_allow_html=True)
-    antecedente_ca = st.radio(
-        "¿Antecedente Oncológico Mamario? (relevante para el estudio, según BI-RADS/NML)",
-        ["Ninguno", "Sí (Cirugía Conservadora)", "Sí (Mastectomía Radical)"],
-        format_func=lambda opcion: "No" if opcion == "Ninguno" else opcion,
-        key="antecedente_ca",
+    tiene_ca_mama_personal = st.radio(
+        "¿Antecedente personal de Cáncer de Mama?",
+        ["No", "Sí"],
+        horizontal=True,
+        key="tiene_ca_mama_personal",
     )
+    if tiene_ca_mama_personal == "Sí":
+        tipo_cirugia_mama = st.radio(
+            "Tipo de cirugía en la mama afectada:",
+            ["Cirugía Conservadora (Tumorectomía/Cuadrantectomía)", "Mastectomía", "Sin cirugía de mama"],
+            key="tipo_cirugia_mama",
+        )
+        if tipo_cirugia_mama.startswith("Cirugía Conservadora"):
+            antecedente_ca = "Sí (Cirugía Conservadora)"
+        elif tipo_cirugia_mama == "Mastectomía":
+            antecedente_ca = "Sí (Mastectomía Radical)"
+        else:
+            antecedente_ca = "Sí (Sin Cirugía Mamaria)"
+    else:
+        antecedente_ca = "Ninguno"
+
     if antecedente_ca != "Ninguno":
         recibio_rt = st.checkbox("Recibió Radioterapia", key="recibio_rt")
     else:
