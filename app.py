@@ -257,7 +257,8 @@ def _linea_es_residuo_modalidad(linea, metodo):
         if linea.strip().startswith("- **H"):
             marcadores_eco = (
                 "nml", "quiste simple", "nódulo sólido", "nodulo solido",
-                "complejo / sólido-líquido", "anecoica", "ecotextura", "doppler",
+                "quiste complicado", "microquistes agrupados", "masa mixta",
+                "anecoica", "ecotextura", "doppler",
                 "hipoecoica", "isoecoica", "hiperecoica",
             )
             return any(m in linea_l for m in marcadores_eco)
@@ -1171,7 +1172,7 @@ with col_datos:
                     with st.expander(f"🔍 Hallazgo Focal {i+1}", expanded=True):
                         opciones = []
                         if metodo == "Mamografía": opciones.extend(["Nódulo (Masa)", "Calcificaciones", "Asimetría"])
-                        else: opciones.extend(["Nódulo Sólido", "Quiste Simple", "Complejo / Sólido-Líquido", "Lesión No Masa (NML)"])
+                        else: opciones.extend(["Nódulo Sólido", "Quiste Simple", "Quiste Complicado", "Microquistes Agrupados", "Masa Mixta (Sólida y Quística)", "Lesión No Masa (NML)"])
                         if antecedente_ca != "Ninguno": opciones.append("Cicatriz / Distorsión Post-Tratamiento")
                         
                         hkey = f"h_{clave}_{i}"
@@ -1274,17 +1275,33 @@ with col_datos:
                             if hallazgo == "Quiste Simple":
                                 desc_h = f"Imagen **anecoica**, circunscrita, con refuerzo posterior en **{localizacion}**, de **{med} mm**."
                                 cat_h, just_h, concl_h = "BI-RADS 2", "Quiste simple típico.", f"Quiste simple en {localizacion}."
+                            elif hallazgo == "Quiste Complicado":
+                                desc_h = f"Imagen quística con **ecos internos de bajo nivel** (contenido espeso/detritus), pared fina, sin componente sólido discreto, en **{localizacion}**, de **{med} mm**."
+                                cat_h, just_h, concl_h = "BI-RADS 3", "Quiste complicado sin componente sólido ni pared engrosada irregular.", f"Quiste complicado en {localizacion}. Se sugiere correlación clínica; si es hallazgo único, control ecográfico a los 6 meses."
+                            elif hallazgo == "Microquistes Agrupados":
+                                desc_h = f"Conglomerado de **microquistes agrupados** (< 3 mm), con septos finos, sin componente sólido discreto, en **{localizacion}**, de **{med} mm**."
+                                cat_h, just_h, concl_h = "BI-RADS 2", "Microquistes agrupados sin margen indistinto ni componente sólido.", f"Microquistes agrupados en {localizacion}. Hallazgo benigno (cambios fibroquísticos)."
                             else:
-                                forma = st.radio("Forma:", ["Ovalada", "Redonda", "Irregular"], horizontal=True, key=f"f_{clave}_{i}")
-                                margen = st.selectbox("Márgenes:", ["Circunscrito", "Indistinto", "Microlobulado", "Espiculado"], key=f"ma_{clave}_{i}")
+                                if metodo == "Mamografía":
+                                    forma = st.radio("Forma:", ["Ovalada", "Lobulada", "Redonda", "Irregular"], horizontal=True, key=f"f_{clave}_{i}")
+                                    margen = st.selectbox("Márgenes:", ["Circunscrito", "Oscurecido", "Indistinto", "Espiculado"], key=f"ma_{clave}_{i}")
+                                else:
+                                    forma = st.radio("Forma:", ["Ovalada", "Lobulada", "Redonda", "Irregular"], horizontal=True, key=f"f_{clave}_{i}")
+                                    margen = st.selectbox("Márgenes:", ["Circunscrito", "Indistinto", "Angular", "Microlobulado", "Espiculado"], key=f"ma_{clave}_{i}")
                                 desc_h = f"Imagen nodular de morfología **{forma.lower()}** y márgenes **{margen.lower()}** en **{localizacion}**, de **{med} mm**."
-                                
+                                if hallazgo == "Masa Mixta (Sólida y Quística)":
+                                    desc_h += " Con **componente mixto sólido y quístico** (mural)."
+
                                 if forma == "Ovalada" and margen == "Circunscrito": cat_h, just_h, concl_h = "BI-RADS 3", "Criterios de benignidad.", f"Nódulo {forma.lower()} circunscrito en {localizacion}."
                                 elif margen == "Espiculado" or forma == "Irregular": cat_h, just_h, concl_h = "BI-RADS 5", "Morfología altamente sugestiva.", f"Lesión sospechosa en {localizacion}. Biopsia urgente."
                                 else: cat_h, just_h, concl_h = "BI-RADS 4B", "Sospecha intermedia.", f"Nódulo de márgenes {margen.lower()} en {localizacion}. Se sugiere biopsia core."
 
+                                if hallazgo == "Masa Mixta (Sólida y Quística)" and valor_birads(cat_h) < 4.1:
+                                    cat_h, just_h = "BI-RADS 4B", "Masa mixta sólida-quística: el componente sólido requiere caracterización histológica."
+                                    concl_h = f"Masa mixta sólida y quística en {localizacion}. Biopsia dirigida al componente sólido."
+
                         # Evolución por Lesión
-                        if hallazgo not in ["Quiste Simple", "Cicatriz"]:
+                        if hallazgo not in ["Quiste Simple", "Microquistes Agrupados", "Cicatriz"]:
                             st.markdown("**Comparativa Evolutiva:**")
                             tiene_previos = st.radio("¿Estudios previos para este hallazgo?", ["No", "Sí"], horizontal=True, key=f"prev_{clave}_{i}")
                             if tiene_previos == "Sí":
@@ -1305,7 +1322,7 @@ with col_datos:
                                 desc_h += " *(Sin previos)*."
 
                         # Doppler Color (Ecografía)
-                        if metodo == "Ecografía (Ultrasonido)" and hallazgo in ["Nódulo Sólido", "Complejo / Sólido-Líquido"]:
+                        if metodo == "Ecografía (Ultrasonido)" and hallazgo in ["Nódulo Sólido", "Masa Mixta (Sólida y Quística)"]:
                             doppler = st.selectbox("Doppler Color:", ["Ausencia de señal", "Vascularización periférica", "Vascularización interna"], key=f"dop_{clave}_{i}")
                             if "interna" in doppler:
                                 desc_h += " Muestra **vascularización interna** (neoangiogénesis)."
