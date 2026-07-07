@@ -1,8 +1,7 @@
 import streamlit as st
 from pathlib import Path
 from datetime import datetime
-from PIL import Image, ImageDraw, UnidentifiedImageError
-import time
+from PIL import Image, UnidentifiedImageError
 
 try:
     from pillow_heif import register_heif_opener
@@ -306,7 +305,8 @@ def resolver_logo():
 def _pdf_texto(texto):
     return texto.encode("latin-1", "replace").decode("latin-1")
 
-def generar_pdf_informe(informe_texto, nombre_paciente, medico="", categoria=""):
+def generar_pdf_informe(informe_texto, nombre_paciente, medico="", categoria="", imagen_md=None, imagen_mi=None):
+    import io
     from fpdf import FPDF
     from fpdf.enums import XPos, YPos
 
@@ -364,6 +364,29 @@ def generar_pdf_informe(informe_texto, nombre_paciente, medico="", categoria="")
             pdf.set_font("Helvetica", "", 10)
             pdf.multi_cell(pdf.epw, 5.5, _pdf_texto(linea))
 
+    imagenes_anexas = [("Mama Derecha", imagen_md), ("Mama Izquierda", imagen_mi)]
+    imagenes_anexas = [(titulo, img) for titulo, img in imagenes_anexas if img]
+    if imagenes_anexas:
+        pdf.ln(4)
+        pdf.set_x(pdf.l_margin)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.multi_cell(pdf.epw, 6, _pdf_texto("IMÁGENES ANEXADAS"))
+        pdf.set_font("Helvetica", "I", 8)
+        pdf.set_text_color(100, 100, 100)
+        pdf.multi_cell(pdf.epw, 4, _pdf_texto("Documentación aportada por el operador. No fue analizada ni interpretada automáticamente por el sistema."))
+        pdf.ln(2)
+        for titulo, img_bytes in imagenes_anexas:
+            pdf.set_x(pdf.l_margin)
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_text_color(0, 0, 0)
+            pdf.cell(pdf.epw, 5, _pdf_texto(titulo + ":"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            try:
+                pdf.image(io.BytesIO(img_bytes), x=pdf.l_margin, w=90)
+            except Exception:
+                pdf.set_font("Helvetica", "I", 8)
+                pdf.multi_cell(pdf.epw, 4, _pdf_texto("(No se pudo incrustar la imagen en el PDF.)"))
+            pdf.ln(4)
+
     pdf.ln(8)
     pdf.set_x(pdf.l_margin)
     pdf.set_font("Helvetica", "I", 8)
@@ -375,8 +398,8 @@ def generar_pdf_informe(informe_texto, nombre_paciente, medico="", categoria="")
     return bytes(pdf.output())
 
 @st.cache_data(show_spinner=False)
-def obtener_pdf_bytes(informe_texto, nombre_paciente, medico="", categoria=""):
-    return generar_pdf_informe(informe_texto, nombre_paciente, medico, categoria)
+def obtener_pdf_bytes(informe_texto, nombre_paciente, medico="", categoria="", imagen_md=None, imagen_mi=None):
+    return generar_pdf_informe(informe_texto, nombre_paciente, medico, categoria, imagen_md, imagen_mi)
 
 init_session_state()
 # --- FUNCIÓN DE UTILIDAD BI-RADS ---
@@ -1026,9 +1049,9 @@ resultados = {"Mama Derecha": {}, "Mama Izquierda": {}}
 
 # --- FUNCIÓN REUTILIZABLE DE VISIÓN IA ---
 def modulo_vision_ia(clave_mama):
-    st.markdown(f"**📸 Telemetría PACS y Detección CAD ({clave_mama})**")
+    st.markdown(f"**📸 Imagen representativa para el informe ({clave_mama})**")
     f = st.file_uploader(
-        f"Cargar imagen representativa:",
+        "Cargar imagen representativa (se anexa al informe; no es analizada automáticamente):",
         type=["png", "jpg", "jpeg", "webp", "heic", "heif", "bmp", "tiff"],
         key=f"up_{clave_mama}",
     )
@@ -1042,21 +1065,13 @@ def modulo_vision_ia(clave_mama):
                 "formato HEIC no compatible con este dispositivo/navegador: probá exportarla o "
                 "compartirla como JPG/PNG y volvé a cargarla."
             )
+            st.session_state[f"imagen_informe_{clave_mama}"] = None
             return
-        c1, c2 = st.columns(2)
-        with c1: st.image(img, caption="Original", use_container_width=True)
-        with c2:
-            if st.button("🚀 Iniciar Escáner IA (CAD)", key=f"btn_{clave_mama}"):
-                with st.spinner("Analizando vóxeles y morfología..."):
-                    time.sleep(1.5)
-                    img_roi = img.copy()
-                    d = ImageDraw.Draw(img_roi)
-                    w, h = img.size
-                    d.rectangle([w*0.35, h*0.35, w*0.65, h*0.65], outline="red", width=max(3, int(w*0.015)))
-                    st.session_state[f"roi_{clave_mama}"] = img_roi
-            if st.session_state.get(f"roi_{clave_mama}"):
-                st.image(st.session_state[f"roi_{clave_mama}"], caption="🔴 ROI Detectado por IA", use_container_width=True)
-                st.success("🤖 Hallazgo localizado. Proceda a la caracterización BI-RADS abajo.")
+        st.image(img, caption="Imagen anexada al informe", use_container_width=True)
+        st.caption("ℹ️ Esta imagen se adjunta como documentación al informe. No es interpretada ni señalada automáticamente por el sistema.")
+        st.session_state[f"imagen_informe_{clave_mama}"] = f.getvalue()
+    else:
+        st.session_state[f"imagen_informe_{clave_mama}"] = None
 
 with col_datos:
     with st.container(border=True):
@@ -1396,6 +1411,8 @@ with col_reporte:
             nombre_paciente,
             medico=st.session_state.get("perfil_medico", ""),
             categoria=global_cat,
+            imagen_md=st.session_state.get("imagen_informe_md"),
+            imagen_mi=st.session_state.get("imagen_informe_mi"),
         )
         nombre_archivo = f"Informe_BIRADS_{nombre_paciente.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
         st.download_button(
