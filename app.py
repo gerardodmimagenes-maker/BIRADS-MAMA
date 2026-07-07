@@ -321,7 +321,21 @@ def resolver_logo():
             return path
     return None
 
+_PDF_CARACTERES_ESPECIALES = {
+    "\u2265": ">=",  # ≥
+    "\u2264": "<=",  # ≤
+    "\u2014": "-",   # — (em dash)
+    "\u2013": "-",   # – (en dash)
+    "\u2192": "->",  # →
+    "\u2026": "...", # …
+    "\u00d7": "x",   # ×
+    "\u2018": "'", "\u2019": "'",
+    "\u201c": '"', "\u201d": '"',
+}
+
 def _pdf_texto(texto):
+    for original, reemplazo in _PDF_CARACTERES_ESPECIALES.items():
+        texto = texto.replace(original, reemplazo)
     return texto.encode("latin-1", "replace").decode("latin-1")
 
 def generar_pdf_informe(informe_texto, nombre_paciente, medico="", categoria="", imagen_md=None, imagen_mi=None):
@@ -1411,17 +1425,22 @@ with col_reporte:
             sexo_paciente=sexo_paciente, tiene_protesis=tiene_protesis,
         )
         if riesgo_ahf["riesgo_elevado"]:
+            criterios_en_minuscula = [c[:1].lower() + c[1:] for c in riesgo_ahf["criterios_positivos"]]
+            criterios_texto = "; ".join(criterios_en_minuscula)
+            indicacion_bi_rads = riesgo_ahf["indicacion_estructurada"]
+            if riesgo_ahf["subcategoria_indicacion"]:
+                indicacion_bi_rads += f" ({riesgo_ahf['subcategoria_indicacion']})"
             informe_pacs += (
-                "\n\nEVALUACIÓN DE RIESGO POR ANTECEDENTE HEREDOFAMILIAR (AHF)\n"
-                "Indicación estructurada (BI-RADS v2025): " + riesgo_ahf["indicacion_estructurada"]
-                + (f" ({riesgo_ahf['subcategoria_indicacion']})" if riesgo_ahf["subcategoria_indicacion"] else "") + ".\n"
-                "Criterios identificados: " + "; ".join(riesgo_ahf["criterios_positivos"]) + ".\n"
-                + riesgo_ahf["recomendacion"]
+                "\n\nANTECEDENTE HEREDOFAMILIAR (AHF)\n"
+                f"Presenta antecedente heredofamiliar de riesgo elevado para cáncer de mama, dado por "
+                f"{criterios_texto}. {riesgo_ahf['recomendacion']} "
+                f"Indicación estructurada según BI-RADS v2025: {indicacion_bi_rads}."
             )
         if otro_antecedente_oncologico.strip():
             informe_pacs += (
-                "\n\nOTROS ANTECEDENTES ONCOLÓGICOS (no mamarios, sin impacto directo en la interpretación de este estudio)\n"
-                + otro_antecedente_oncologico.strip()
+                "\n\nOTROS ANTECEDENTES ONCOLÓGICOS\n"
+                "La paciente refiere además el siguiente antecedente oncológico no mamario, sin impacto "
+                f"directo en la interpretación de este estudio: {otro_antecedente_oncologico.strip()}."
             )
         st.text_area("Informe PACS", value=informe_pacs, height=420, label_visibility="collapsed")
 
