@@ -96,6 +96,25 @@ PLANTILLAS_SISTEMA = {
         "ed_md": False,
         "ed_mi": False,
     },
+    "Prequirúrgico": {
+        "indicacion": "Estadificación Prequirúrgica",
+        "tiene_ca_mama_personal": "Sí",
+        "tipo_cirugia_mama": "Sin cirugía de mama",
+        "recibio_rt": False,
+        "sexo_paciente": "Femenino",
+        "tiene_protesis": "No",
+        "tiene_portacath": False,
+        "tiene_marcapasos": False,
+        "metodo": "Mamografía",
+        "comp_mammo": "C - Heterogéneamente densa",
+        "hay_md": "Sí",
+        "hay_mi": "No",
+        "num_md": 1,
+        "ax_md": "Conservados",
+        "ax_mi": "Conservados",
+        "ed_md": False,
+        "ed_mi": False,
+    },
     "Nódulo palpable (Eco)": {
         "indicacion": "Nódulo palpable / Mastalgia",
         "tiene_ca_mama_personal": "No",
@@ -1012,7 +1031,7 @@ with st.sidebar:
     if tiene_marcapasos:
         estado_marcapasos = st.selectbox("Estado del Bolsillo (Marcapasos):", ["Aspecto conservado (Sin complicaciones)", "Colección peridispositivo (Seroma/Hematoma)", "Signos inflamatorios locales"], key="estado_marcapasos")
 
-    indicacion = st.selectbox("Indicación Clínica:", ["Tamizaje de rutina", "Seguimiento Oncológico", "Nódulo palpable / Mastalgia", "Evaluación de dispositivos", "Secreción por el pezón", "Ginecomastia en estudio"], key="indicacion")
+    indicacion = st.selectbox("Indicación Clínica:", ["Tamizaje de rutina", "Seguimiento Oncológico", "Estadificación Prequirúrgica", "Nódulo palpable / Mastalgia", "Evaluación de dispositivos", "Secreción por el pezón", "Ginecomastia en estudio"], key="indicacion")
 
     st.markdown("<hr style='border-color: #fecdd3; margin: 12px 0;'>", unsafe_allow_html=True)
     if st.button("🔄 Reiniciar Paciente", use_container_width=True, type="secondary"):
